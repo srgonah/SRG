@@ -1,0 +1,141 @@
+"""
+Audit Invoice Use Case.
+
+Performs comprehensive invoice auditing.
+"""
+
+from dataclasses import dataclass
+
+from src.application.dto.requests import AuditInvoiceRequest
+from src.application.dto.responses import AuditFindingResponse, AuditResultResponse
+from src.config import get_logger
+from src.core.entities.invoice import AuditResult, Invoice
+from src.core.services import (
+    InvoiceAuditorService,
+    get_invoice_auditor_service,
+)
+from src.infrastructure.storage.sqlite import (
+    InvoiceStore,
+    get_invoice_store,
+)
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class AuditResultDTO:
+    """Audit result data transfer object."""
+
+    audit_result: AuditResult
+    invoice: Invoice
+
+
+class AuditInvoiceUseCase:
+    """
+    Use case for auditing invoices.
+
+    Performs rule-based and LLM-powered analysis
+    to detect errors and anomalies.
+    """
+
+    def __init__(
+        self,
+        auditor_service: InvoiceAuditorService | None = None,
+        invoice_store: InvoiceStore | None = None,
+    ):
+        self._auditor = auditor_service
+        self._invoice_store = invoice_store
+
+    def _get_auditor(self) -> InvoiceAuditorService:
+        if self._auditor is None:
+            self._auditor = get_invoice_auditor_service()
+        return self._auditor
+
+    async def _get_invoice_store(self) -> InvoiceStore:
+        if self._invoice_store is None:
+            self._invoice_store = await get_invoice_store()
+        return self._invoice_store
+
+    async def execute(self, request: AuditInvoiceRequest) -> AuditResultDTO:
+        """
+        Execute audit use case.
+
+        Args:
+            request: Audit request with invoice ID and options
+
+        Returns:
+            AuditResultDTO with audit result and invoice
+
+        Raises:
+            ValueError: If invoice not found
+        """
+        logger.info("audit_invoice_started", invoice_id=request.invoice_id)
+
+        # Get invoice
+        store = await self._get_invoice_store()
+        invoice = await store.get_invoice(request.invoice_id)
+
+        if not invoice:
+            raise ValueError(f"Invoice not found: {request.invoice_id}")
+
+        # Perform audit
+        auditor = self._get_auditor()
+        audit_result = await auditor.audit_invoice(
+            invoice=invoice,
+            use_llm=request.use_llm,
+        )
+
+        # Save audit result
+        await store.save_audit_result(audit_result)
+
+        logger.info(
+            "audit_invoice_complete",
+            invoice_id=request.invoice_id,
+            passed=audit_result.passed,
+            findings=len(audit_result.findings),
+        )
+
+        return AuditResultDTO(
+            audit_result=audit_result,
+            invoice=invoice,
+        )
+
+    async def get_latest_audit(self, invoice_id: str) -> AuditResult | None:
+        """Get the most recent audit result for an invoice."""
+        store = await self._get_invoice_store()
+        results = await store.get_audit_results(invoice_id, limit=1)
+        return results[0] if results else None
+
+    async def get_audit_history(
+        self,
+        invoice_id: str,
+        limit: int = 10,
+    ) -> list[AuditResult]:
+        """Get audit history for an invoice."""
+        store = await self._get_invoice_store()
+        return await store.get_audit_results(invoice_id, limit=limit)
+
+    def to_response(self, result: AuditResultDTO) -> AuditResultResponse:
+        """Convert to API response format."""
+        ar = result.audit_result
+
+        return AuditResultResponse(
+            id=ar.id,
+            invoice_id=ar.invoice_id,
+            passed=ar.passed,
+            confidence=ar.confidence,
+            findings=[
+                AuditFindingResponse(
+                    category=f.category,
+                    severity=f.severity,
+                    message=f.message,
+                    field=f.field,
+                    expected=f.expected,
+                    actual=f.actual,
+                )
+                for f in ar.findings
+            ],
+            audited_at=ar.audited_at,
+            error_count=sum(1 for f in ar.findings if f.severity == "error"),
+            warning_count=sum(1 for f in ar.findings if f.severity == "warning"),
+        )

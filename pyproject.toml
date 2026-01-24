@@ -1,0 +1,135 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "srg"
+version = "1.0.0"
+description = "SRG Invoice Processing System with RAG-powered chat"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "SRG Team"}
+]
+keywords = ["invoice", "llm", "rag", "fastapi", "faiss"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # Web framework
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+
+    # Validation & Settings
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+
+    # Database
+    "aiosqlite>=0.19.0",
+
+    # HTTP client
+    "httpx>=0.26.0",
+
+    # LLM
+    "llama-cpp-python>=0.2.55",
+
+    # Embeddings & Vector search
+    "sentence-transformers>=2.3.1",
+    "faiss-cpu>=1.7.4",
+
+    # Retry & resilience
+    "tenacity>=8.2.3",
+
+    # Logging
+    "structlog>=24.1.0",
+
+    # PDF processing
+    "PyMuPDF>=1.23.8",
+
+    # Image processing
+    "Pillow>=10.0.0",
+
+    # Data processing
+    "numpy>=1.26.0",
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "httpx>=0.26.0",
+]
+
+gpu = [
+    "faiss-gpu>=1.7.4",
+    "torch>=2.1.0",
+]
+
+[project.scripts]
+srg = "src.api.main:run"
+srg-migrate = "src.infrastructure.storage.sqlite.migrations.migrator:main"
+srg-index = "src.infrastructure.storage.vector.faiss_store:rebuild_indexes"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.yml", "*.json"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.isort]
+known-first-party = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = ["B101", "B311"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+fail_under = 70
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "1.0.0"
+version_files = ["pyproject.toml:version"]
+tag_format = "v$version"
