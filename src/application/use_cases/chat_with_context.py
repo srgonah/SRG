@@ -14,12 +14,10 @@ from src.application.dto.responses import (
     SessionListResponse,
     SessionResponse,
 )
+from src.application.services import get_chat_service
 from src.config import get_logger
 from src.core.entities.session import ChatSession, Message
-from src.core.services import (
-    ChatService,
-    get_chat_service,
-)
+from src.core.services import ChatService
 
 logger = get_logger(__name__)
 

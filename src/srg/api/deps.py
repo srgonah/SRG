@@ -4,17 +4,19 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from src.application.services import (
+    get_chat_service,
+    get_document_indexer_service,
+    get_invoice_auditor_service,
+    get_invoice_parser_service,
+    get_search_service,
+)
 from src.core.services import (
     ChatService,
     DocumentIndexerService,
     InvoiceAuditorService,
     InvoiceParserService,
     SearchService,
-    get_chat_service,
-    get_document_indexer_service,
-    get_invoice_auditor_service,
-    get_invoice_parser_service,
-    get_search_service,
 )
 from src.infrastructure.storage.sqlite import (
     DocumentStore,

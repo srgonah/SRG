@@ -9,13 +9,10 @@ from dataclasses import dataclass
 
 from src.application.dto.requests import SearchRequest
 from src.application.dto.responses import SearchResponse, SearchResultResponse
+from src.application.services import get_search_service
 from src.config import get_logger
 from src.core.entities.document import SearchResult
-from src.core.services import (
-    SearchContext,
-    SearchService,
-    get_search_service,
-)
+from src.core.services import SearchContext, SearchService
 
 logger = get_logger(__name__)
 

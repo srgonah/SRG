@@ -11,22 +11,19 @@ from pathlib import Path
 
 from src.application.dto.requests import UploadInvoiceRequest
 from src.application.dto.responses import AuditResultResponse, InvoiceResponse
-from src.config import get_logger
-from src.core.entities.document import Document
-from src.core.entities.invoice import AuditResult, Invoice
-from src.core.services import (
-    DocumentIndexerService,
-    InvoiceAuditorService,
-    InvoiceParserService,
+from src.application.services import (
     get_document_indexer_service,
     get_invoice_auditor_service,
     get_invoice_parser_service,
 )
-from src.infrastructure.storage.sqlite import (
-    DocumentStore,
-    InvoiceStore,
-    get_document_store,
-    get_invoice_store,
+from src.config import get_logger
+from src.core.entities.document import Document
+from src.core.entities.invoice import AuditResult, Invoice
+from src.core.interfaces import IDocumentStore, IInvoiceStore
+from src.core.services import (
+    DocumentIndexerService,
+    InvoiceAuditorService,
+    InvoiceParserService,
 )
 
 logger = get_logger(__name__)
@@ -64,9 +61,22 @@ class UploadInvoiceUseCase:
         parser_service: InvoiceParserService | None = None,
         auditor_service: InvoiceAuditorService | None = None,
         indexer_service: DocumentIndexerService | None = None,
-        invoice_store: InvoiceStore | None = None,
-        document_store: DocumentStore | None = None,
+        invoice_store: IInvoiceStore | None = None,
+        document_store: IDocumentStore | None = None,
     ):
+        """
+        Initialize use case with optional service overrides.
+
+        All dependencies are lazily initialized if not provided.
+        This enables both production use and testing with mocks.
+
+        Args:
+            parser_service: Invoice parser service
+            auditor_service: Invoice auditor service
+            indexer_service: Document indexer service
+            invoice_store: Invoice persistence store
+            document_store: Document persistence store
+        """
         self._parser = parser_service
         self._auditor = auditor_service
         self._indexer = indexer_service
@@ -88,13 +98,17 @@ class UploadInvoiceUseCase:
             self._indexer = await get_document_indexer_service()
         return self._indexer
 
-    async def _get_invoice_store(self) -> InvoiceStore:
+    async def _get_invoice_store(self) -> IInvoiceStore:
         if self._invoice_store is None:
+            # Lazy import to avoid circular imports
+            from src.infrastructure.storage.sqlite import get_invoice_store
             self._invoice_store = await get_invoice_store()
         return self._invoice_store
 
-    async def _get_document_store(self) -> DocumentStore:
+    async def _get_document_store(self) -> IDocumentStore:
         if self._document_store is None:
+            # Lazy import to avoid circular imports
+            from src.infrastructure.storage.sqlite import get_document_store
             self._document_store = await get_document_store()
         return self._document_store
 
@@ -158,7 +172,7 @@ class UploadInvoiceUseCase:
             logger.info(
                 "upload_invoice_complete",
                 invoice_id=invoice.id,
-                items=len(invoice.line_items),
+                items=len(invoice.items),
                 audited=audit_result is not None,
             )
 
@@ -198,11 +212,11 @@ class UploadInvoiceUseCase:
 
         response = {
             "invoice": InvoiceResponse(
-                id=invoice.id,
-                document_id=invoice.document_id,
-                invoice_number=invoice.invoice_number,
-                vendor_name=invoice.vendor_name,
-                vendor_address=invoice.vendor_address,
+                id=str(invoice.id) if invoice.id else "0",
+                document_id=str(invoice.doc_id) if invoice.doc_id else None,
+                invoice_number=invoice.invoice_no,
+                vendor_name=invoice.seller_name,
+                vendor_address=None,  # Not in entity
                 invoice_date=invoice.invoice_date,
                 due_date=invoice.due_date,
                 subtotal=invoice.subtotal,
@@ -211,18 +225,18 @@ class UploadInvoiceUseCase:
                 currency=invoice.currency,
                 line_items=[
                     {
-                        "description": item.description,
+                        "description": item.description or item.item_name,
                         "quantity": item.quantity,
                         "unit": item.unit,
                         "unit_price": item.unit_price,
                         "total_price": item.total_price,
-                        "reference": item.reference,
+                        "reference": getattr(item, "reference", None),
                     }
-                    for item in invoice.line_items
+                    for item in invoice.items
                 ],
                 calculated_total=invoice.calculated_total,
-                source_file=invoice.source_file,
-                parsed_at=invoice.parsed_at,
+                source_file=None,  # Not in entity
+                parsed_at=invoice.created_at,  # Use created_at instead
                 confidence=invoice.confidence,
             ),
             "document_id": result.document.id,
@@ -232,24 +246,27 @@ class UploadInvoiceUseCase:
         if result.audit_result:
             ar = result.audit_result
             response["audit"] = AuditResultResponse(
-                id=ar.id,
-                invoice_id=ar.invoice_id,
+                id=str(ar.id) if ar.id else "0",
+                invoice_id=str(ar.invoice_id),
                 passed=ar.passed,
                 confidence=ar.confidence,
                 findings=[
                     {
-                        "category": f.category,
-                        "severity": f.severity,
-                        "message": f.message,
-                        "field": f.field,
-                        "expected": f.expected,
-                        "actual": f.actual,
+                        "code": issue.code,
+                        "category": issue.category,
+                        "severity": issue.severity.value if hasattr(issue.severity, 'value') else str(issue.severity),
+                        "message": issue.message,
+                        "field": issue.field,
+                        "expected": issue.expected,
+                        "actual": issue.actual,
                     }
-                    for f in ar.findings
+                    for issue in ar.issues
                 ],
-                audited_at=ar.audited_at,
-                error_count=sum(1 for f in ar.findings if f.severity == "error"),
-                warning_count=sum(1 for f in ar.findings if f.severity == "warning"),
+                audited_at=ar.audited_at or ar.created_at,
+                error_count=ar.errors_count,
+                warning_count=ar.warnings_count,
             )
+        else:
+            response["audit"] = None
 
         return response

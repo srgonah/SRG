@@ -8,16 +8,12 @@ from dataclasses import dataclass
 
 from src.application.dto.requests import AuditInvoiceRequest
 from src.application.dto.responses import AuditFindingResponse, AuditResultResponse
+from src.application.services import get_invoice_auditor_service
 from src.config import get_logger
 from src.core.entities.invoice import AuditResult, Invoice
-from src.core.services import (
-    InvoiceAuditorService,
-    get_invoice_auditor_service,
-)
-from src.infrastructure.storage.sqlite import (
-    InvoiceStore,
-    get_invoice_store,
-)
+from src.core.exceptions import InvoiceNotFoundError
+from src.core.interfaces import IInvoiceStore
+from src.core.services import InvoiceAuditorService
 
 logger = get_logger(__name__)
 
@@ -41,8 +37,15 @@ class AuditInvoiceUseCase:
     def __init__(
         self,
         auditor_service: InvoiceAuditorService | None = None,
-        invoice_store: InvoiceStore | None = None,
+        invoice_store: IInvoiceStore | None = None,
     ):
+        """
+        Initialize use case with optional service overrides.
+
+        Args:
+            auditor_service: Invoice auditor service
+            invoice_store: Invoice persistence store
+        """
         self._auditor = auditor_service
         self._invoice_store = invoice_store
 
@@ -51,8 +54,10 @@ class AuditInvoiceUseCase:
             self._auditor = get_invoice_auditor_service()
         return self._auditor
 
-    async def _get_invoice_store(self) -> InvoiceStore:
+    async def _get_invoice_store(self) -> IInvoiceStore:
         if self._invoice_store is None:
+            # Lazy import to avoid circular imports
+            from src.infrastructure.storage.sqlite import get_invoice_store
             self._invoice_store = await get_invoice_store()
         return self._invoice_store
 
@@ -67,7 +72,7 @@ class AuditInvoiceUseCase:
             AuditResultDTO with audit result and invoice
 
         Raises:
-            ValueError: If invoice not found
+            InvoiceNotFoundError: If invoice not found
         """
         logger.info("audit_invoice_started", invoice_id=request.invoice_id)
 
@@ -76,7 +81,12 @@ class AuditInvoiceUseCase:
         invoice = await store.get_invoice(request.invoice_id)
 
         if not invoice:
-            raise ValueError(f"Invoice not found: {request.invoice_id}")
+            # Convert string ID to int for exception, handle gracefully
+            try:
+                inv_id = int(request.invoice_id)
+            except ValueError:
+                inv_id = 0  # Fallback for non-numeric IDs
+            raise InvoiceNotFoundError(inv_id)
 
         # Perform audit
         auditor = self._get_auditor()
