@@ -8,15 +8,13 @@ Tests:
 - Timing information is recorded
 """
 
-import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.core.entities import Invoice, LineItem, RowType
+import pytest
+
+from src.core.entities import Invoice, LineItem
 from src.core.interfaces import ParserResult
 from src.infrastructure.parsers.registry import (
     ParserRegistry,
-    DEFAULT_CONFIDENCE_THRESHOLD,
 )
 
 

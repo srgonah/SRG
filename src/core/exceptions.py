@@ -21,7 +21,7 @@ class SRGError(Exception):
         self.code = code or self.__class__.__name__
         self.details = details or {}
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             "error": self.code,

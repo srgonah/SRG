@@ -4,7 +4,6 @@ Integration tests for invoice upload and audit flow with mocks.
 Tests the complete flow: upload -> parse -> audit with mocked services.
 """
 
-import io
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 

@@ -1,6 +1,7 @@
 """Session schemas."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +10,7 @@ class CreateSessionRequest(BaseModel):
     """Create session request."""
 
     title: str | None = Field(default=None, max_length=200)
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class SessionResponse(BaseModel):
@@ -20,7 +21,7 @@ class SessionResponse(BaseModel):
     message_count: int
     created_at: datetime
     updated_at: datetime
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
 
 
 class SessionListResponse(BaseModel):

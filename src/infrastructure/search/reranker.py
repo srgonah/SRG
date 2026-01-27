@@ -4,6 +4,8 @@ BGE-Reranker integration for result re-ranking.
 Improves search precision by re-scoring candidate results.
 """
 
+from typing import Any
+
 from src.config import get_logger, get_settings
 
 logger = get_logger(__name__)
@@ -15,7 +17,7 @@ try:
     RERANKER_AVAILABLE = True
 except ImportError:
     RERANKER_AVAILABLE = False
-    CrossEncoder = None
+    CrossEncoder = None  # type: ignore[misc]
 
 
 class Reranker:
@@ -26,12 +28,12 @@ class Reranker:
     between query and documents.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         settings = get_settings()
         self.model_name = settings.search.reranker_model
         self.top_k = settings.search.reranker_top_k
         self._enabled = settings.search.reranker_enabled
-        self._model: CrossEncoder | None = None
+        self._model: Any = None
 
     def is_enabled(self) -> bool:
         """Check if reranker is enabled and available."""

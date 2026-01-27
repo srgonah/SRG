@@ -8,8 +8,8 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-from src.config import get_settings
 from src.api.main import app
+from src.config import get_settings
 
 settings = get_settings()
 

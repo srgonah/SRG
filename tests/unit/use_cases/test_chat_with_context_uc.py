@@ -14,7 +14,7 @@ from src.application.use_cases.chat_with_context import (
     ChatResultDTO,
     ChatWithContextUseCase,
 )
-from src.core.entities.session import ChatSession, Message, MessageRole
+from src.core.entities.session import ChatSession, MessageRole
 
 
 # Test fixtures
@@ -161,7 +161,7 @@ class TestChatWithContextUseCase:
             session_id=None,
             use_rag=False,
         )
-        result = await use_case.execute(request)
+        await use_case.execute(request)
 
         # Verify RAG was disabled
         call_kwargs = mock_chat_service.chat.call_args[1]

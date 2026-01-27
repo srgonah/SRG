@@ -8,7 +8,6 @@ NO infrastructure imports - depends only on core entities, interfaces, exception
 import json
 import re
 from datetime import datetime, timedelta
-from typing import Any
 
 from src.core.entities.invoice import (
     ArithmeticCheck,
@@ -16,9 +15,7 @@ from src.core.entities.invoice import (
     AuditResult,
     Invoice,
     IssueSeverity,
-    LineItem,
 )
-from src.core.exceptions import AuditError
 from src.core.interfaces import IInvoiceStore, ILLMProvider
 
 
@@ -88,7 +85,7 @@ class InvoiceAuditorService:
         llm_used = False
         if use_llm and self._llm:
             try:
-                if await self._llm.is_available():
+                if self._llm.is_available():
                     llm_issues = await self._llm_analysis(invoice)
                     issues.extend(llm_issues)
                     llm_used = True
@@ -117,7 +114,7 @@ class InvoiceAuditorService:
         duration_ms = (datetime.now() - start_time).total_seconds() * 1000
 
         result = AuditResult(
-            invoice_id=invoice.id,
+            invoice_id=invoice.id or 0,
             passed=passed,
             confidence=confidence,
             issues=issues,
@@ -440,11 +437,12 @@ If no issues found, respond with empty array: []
 JSON response:"""
 
         try:
-            response = await self._llm.generate(
+            llm_response = await self._llm.generate(
                 prompt,
                 max_tokens=500,
                 temperature=0.1,
             )
+            response = llm_response.text
 
             # Parse LLM response
             json_match = re.search(r"\[.*\]", response, re.DOTALL)
@@ -466,7 +464,7 @@ JSON response:"""
                                 category="llm_analysis",
                                 field=f"items[{item['line'] - 1}]"
                                 if item.get("line")
-                                else None,
+                                else "",
                             )
                         )
 

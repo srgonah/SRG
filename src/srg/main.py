@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,7 +11,7 @@ from .config import settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan manager for startup/shutdown events."""
     # Startup
     print(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
@@ -79,7 +80,7 @@ async def health_check() -> dict[str, str]:
     return {"status": "healthy", "version": settings.VERSION}
 
 
-def run():
+def run() -> None:
     """Run the application with uvicorn."""
     import uvicorn
 

@@ -30,28 +30,28 @@ async def detailed_health() -> HealthResponse:
     from src.infrastructure.storage.sqlite import get_connection_pool
     from src.infrastructure.storage.vector import get_faiss_store
 
-    status = "healthy"
+    status_str = "healthy"
     providers: dict[str, ProviderHealth] = {}
 
     # Check LLM
     try:
         llm = get_llm_provider()
         start = time.time()
-        is_healthy = await llm.health_check()
+        health_result = await llm.check_health()
         providers["llm"] = ProviderHealth(
             name=llm.__class__.__name__,
-            available=is_healthy,
+            available=health_result.available,
             latency_ms=(time.time() - start) * 1000,
         )
     except Exception as e:
         providers["llm"] = ProviderHealth(name="llm", available=False, error=str(e))
-        status = "degraded"
+        status_str = "degraded"
 
     # Check embedding
     try:
         embedder = get_embedding_provider()
         start = time.time()
-        await embedder.embed("test")
+        embedder.embed_single("test")
         providers["embedding"] = ProviderHealth(
             name=embedder.__class__.__name__,
             available=True,
@@ -59,13 +59,13 @@ async def detailed_health() -> HealthResponse:
         )
     except Exception as e:
         providers["embedding"] = ProviderHealth(name="embedding", available=False, error=str(e))
-        status = "degraded"
+        status_str = "degraded"
 
     # Check database
     try:
         pool = await get_connection_pool()
         start = time.time()
-        async with pool.connection() as conn:
+        async with pool.acquire() as conn:
             await conn.execute("SELECT 1")
         providers["database"] = ProviderHealth(
             name="sqlite",
@@ -74,7 +74,7 @@ async def detailed_health() -> HealthResponse:
         )
     except Exception as e:
         providers["database"] = ProviderHealth(name="database", available=False, error=str(e))
-        status = "unhealthy"
+        status_str = "unhealthy"
 
     # Check vector store
     try:
@@ -90,10 +90,10 @@ async def detailed_health() -> HealthResponse:
         providers["vector_store"] = ProviderHealth(
             name="vector_store", available=False, error=str(e)
         )
-        status = "degraded"
+        status_str = "degraded"
 
     return HealthResponse(
-        status=status,
+        status=status_str,
         version=settings.VERSION,
         uptime_seconds=time.time() - _start_time,
         providers=providers,

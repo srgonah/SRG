@@ -8,15 +8,15 @@ Tests:
 - Score normalization
 """
 
-import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from src.infrastructure.search.fts import (
-    _expand_query,
-    FTSSearcher,
-)
+import pytest
+
 from src.core.entities import SearchResult
+from src.infrastructure.search.fts import (
+    FTSSearcher,
+    _expand_query,
+)
 
 
 class TestQueryExpansion:

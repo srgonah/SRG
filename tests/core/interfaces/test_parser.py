@@ -198,6 +198,7 @@ class TestIParserRegistryInterface:
             "unregister",
             "get_parsers",
             "parse",
+            "parse_with_parser",
         }
         actual_methods = set(IParserRegistry.__abstractmethods__)
         assert abstract_methods == actual_methods

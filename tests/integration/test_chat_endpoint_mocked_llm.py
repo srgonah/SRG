@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
-from src.core.entities.session import ChatSession, Message, MessageRole
+from src.core.entities.session import ChatSession, MessageRole
 
 
 @pytest.fixture

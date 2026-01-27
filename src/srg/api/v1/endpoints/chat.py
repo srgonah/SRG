@@ -1,9 +1,13 @@
 """Chat endpoints."""
 
+from collections.abc import AsyncIterator
+from typing import Any
+
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from src.application.dto.requests import ChatRequest as ChatRequestDTO
+from src.application.dto.responses import ChatResponse as ChatResponseDTO
 from src.application.use_cases import ChatWithContextUseCase
 from src.srg.schemas.chat import ChatRequest, ChatResponse
 
@@ -11,7 +15,7 @@ router = APIRouter()
 
 
 @router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest) -> ChatResponseDTO | StreamingResponse:
     """Send a chat message with RAG context."""
     use_case = ChatWithContextUseCase()
     dto = ChatRequestDTO(
@@ -30,7 +34,7 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
     """Stream a chat response using SSE."""
     use_case = ChatWithContextUseCase()
     dto = ChatRequestDTO(
@@ -40,7 +44,7 @@ async def chat_stream(request: ChatRequest):
         top_k=request.top_k,
     )
 
-    async def generate():
+    async def generate() -> AsyncIterator[str]:
         try:
             async for chunk in use_case.stream(dto):
                 yield f"data: {chunk}\n\n"
@@ -56,7 +60,7 @@ async def chat_stream(request: ChatRequest):
 
 
 @router.get("/context")
-async def get_context_for_query(query: str, top_k: int = 5):
+async def get_context_for_query(query: str, top_k: int = 5) -> dict[str, Any]:
     """Get RAG context for debugging."""
     from src.application.use_cases import SearchDocumentsUseCase
 

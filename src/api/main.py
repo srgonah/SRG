@@ -4,13 +4,16 @@ FastAPI application factory.
 Creates and configures the main application instance.
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 
 from src.api.middleware import ErrorHandlerMiddleware, LoggingMiddleware
 from src.api.middleware.error_handler import setup_exception_handlers
@@ -28,7 +31,7 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     Application lifespan handler.
 
@@ -77,8 +80,8 @@ async def lifespan(app: FastAPI):
             from src.infrastructure.llm import get_llm_provider
 
             llm = get_llm_provider()
-            is_healthy = await llm.health_check()
-            logger.info("llm_provider_ready", healthy=is_healthy)
+            health_status = await llm.check_health()
+            logger.info("llm_provider_ready", healthy=health_status.available)
 
         except Exception as e:
             logger.warning("llm_warmup_failed", error=str(e))
@@ -170,8 +173,8 @@ app = create_app()
 
 
 # Root endpoint - serve web UI
-@app.get("/")
-async def root():
+@app.get("/", response_model=None)
+async def root() -> FileResponse | dict[str, str]:
     """Serve web UI or return API info."""
     static_dir = Path(__file__).parent.parent.parent / "static"
     index_file = static_dir / "index.html"
@@ -186,9 +189,8 @@ async def root():
 
 # Root health endpoint (for k8s/docker health checks)
 @app.get("/health")
-async def root_health():
+async def root_health() -> dict[str, str]:
     """Simple health check at root level."""
-    import time
     return {
         "status": "healthy",
         "version": "1.0.0",
@@ -197,8 +199,8 @@ async def root_health():
 
 # SPA catch-all: serve index.html for non-API paths so React Router works
 # Registered last — API routes, /docs, /health, and /static mount all take priority.
-@app.get("/{path:path}")
-async def spa_catch_all(path: str):
+@app.get("/{path:path}", response_model=None)
+async def spa_catch_all(path: str) -> Response | dict[str, str]:
     """Serve SPA index.html for client-side routes."""
     from fastapi.responses import JSONResponse
 

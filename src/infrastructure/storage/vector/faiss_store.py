@@ -7,6 +7,7 @@ Supports both CPU and GPU backends.
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -54,7 +55,7 @@ class FAISSVectorStore(IVectorStore):
     def _check_gpu(self) -> bool:
         """Check if GPU is available."""
         try:
-            return faiss.get_num_gpus() > 0
+            return bool(faiss.get_num_gpus() > 0)
         except Exception:
             return False
 
@@ -214,7 +215,7 @@ class FAISSVectorStore(IVectorStore):
                 total += index.ntotal
         return total
 
-    async def get_index_stats(self, index_name: str) -> dict:
+    async def get_index_stats(self, index_name: str) -> dict[str, Any]:
         """Get index statistics."""
         index = self._get_index(index_name)
         if index is None:
@@ -375,9 +376,9 @@ async def rebuild_indexes() -> None:
     chunks = await doc_store.get_chunks_for_indexing(limit=100000)
     if chunks:
         texts = [c.embedding_text for c in chunks]
-        ids = [c.id for c in chunks]
+        chunk_ids = [c.id for c in chunks if c.id is not None]
         embeddings = embedder.embed_batch(texts)
-        await store.build_index("chunks", embeddings, ids, force_rebuild=True)
+        await store.build_index("chunks", embeddings, chunk_ids, force_rebuild=True)
 
     # Rebuild items index
     logger.info("rebuilding_items_index")
@@ -387,9 +388,9 @@ async def rebuild_indexes() -> None:
             f"{item['item_name']} {item.get('hs_code', '')} {item.get('brand', '')} {item.get('model', '')}"
             for item in items
         ]
-        ids = [item["id"] for item in items]
+        item_ids: list[int] = [item["id"] for item in items]
         embeddings = embedder.embed_batch(texts)
-        await store.build_index("items", embeddings, ids, force_rebuild=True)
+        await store.build_index("items", embeddings, item_ids, force_rebuild=True)
 
     logger.info("index_rebuild_complete")
 

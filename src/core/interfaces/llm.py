@@ -99,7 +99,7 @@ class ILLMProvider(ABC):
         Yields:
             Text chunks as they're generated
         """
-        pass
+        yield ""
 
     @abstractmethod
     async def chat(

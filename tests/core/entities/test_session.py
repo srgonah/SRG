@@ -2,8 +2,6 @@
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from src.core.entities.session import (
     ChatSession,
     MemoryFact,
@@ -274,7 +272,7 @@ class TestChatSessionAddMemoryFact:
 
     def test_update_existing_fact(self):
         session = ChatSession()
-        fact1 = session.add_memory_fact(
+        _fact1 = session.add_memory_fact(
             MemoryFactType.USER_PREFERENCE,
             "language",
             "english",

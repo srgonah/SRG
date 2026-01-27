@@ -1,29 +1,29 @@
 """Parser infrastructure implementations."""
 
 from src.infrastructure.parsers.base import (
+    ConfidenceFactors,
+    # Enhanced result types
+    EnhancedParserResult,
+    ParserTiming,
+    # Confidence scoring
+    calculate_confidence,
+    calculate_item_confidence,
     # Text utilities
     clean_item_name,
+    # Currency
+    detect_currency,
     extract_hs_code,
     extract_table_block,
     is_bank_line,
     is_summary_or_meta_line,
     normalize_number,
     normalize_unicode,
+    # Date parsing
+    parse_date,
     parse_number,
     safe_string,
     split_cells_by_whitespace,
     strip_currency,
-    # Date parsing
-    parse_date,
-    # Currency
-    detect_currency,
-    # Confidence scoring
-    calculate_confidence,
-    calculate_item_confidence,
-    ConfidenceFactors,
-    # Enhanced result types
-    EnhancedParserResult,
-    ParserTiming,
 )
 from src.infrastructure.parsers.registry import (
     DEFAULT_CONFIDENCE_THRESHOLD,
@@ -42,9 +42,9 @@ from src.infrastructure.parsers.template_parser import (
     get_template_parser,
 )
 from src.infrastructure.parsers.vision_parser import (
-    VisionParser,
     VisionInvoiceResponse,
     VisionLineItem,
+    VisionParser,
     get_vision_parser,
 )
 

@@ -1,13 +1,14 @@
 """Database session management."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from src.infrastructure.storage.sqlite import get_connection_pool
 
 
 @asynccontextmanager
-async def get_db_session() -> AsyncGenerator:
+async def get_db_session() -> AsyncIterator[Any]:
     """
     Get database session context manager.
 
@@ -16,5 +17,5 @@ async def get_db_session() -> AsyncGenerator:
             await session.execute("SELECT 1")
     """
     pool = await get_connection_pool()
-    async with pool.connection() as conn:
+    async with pool.acquire() as conn:
         yield conn

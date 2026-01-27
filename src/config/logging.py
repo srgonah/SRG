@@ -6,6 +6,7 @@ Provides JSON logging for production and colored console output for development.
 
 import logging
 import sys
+from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
@@ -15,8 +16,8 @@ from src.config.settings import get_settings
 
 
 def add_app_context(
-    logger: logging.Logger, method_name: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     """Add application context to log events."""
     settings = get_settings()
     event_dict["app"] = settings.app_name
@@ -76,4 +77,5 @@ def configure_logging() -> None:
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Get a structured logger instance."""
-    return structlog.get_logger(name)
+    logger: structlog.stdlib.BoundLogger = structlog.get_logger(name)
+    return logger

@@ -3,11 +3,12 @@ Error handling middleware.
 """
 
 import traceback
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
-from fastapi import Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from src.application.dto.responses import ErrorResponse
 from src.config import get_logger
@@ -53,8 +54,8 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self,
         request: Request,
-        call_next: Callable,
-    ) -> JSONResponse:
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         """Handle request with error catching."""
         try:
             return await call_next(request)
@@ -105,7 +106,7 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
         )
 
 
-def setup_exception_handlers(app):
+def setup_exception_handlers(app: FastAPI) -> None:
     """Set up FastAPI exception handlers."""
     from fastapi.exceptions import RequestValidationError
     from starlette.exceptions import HTTPException
@@ -114,7 +115,7 @@ def setup_exception_handlers(app):
     async def validation_exception_handler(
         request: Request,
         exc: RequestValidationError,
-    ):
+    ) -> JSONResponse:
         """Handle Pydantic validation errors."""
         errors = []
         for error in exc.errors():
@@ -135,7 +136,7 @@ def setup_exception_handlers(app):
     async def http_exception_handler(
         request: Request,
         exc: HTTPException,
-    ):
+    ) -> JSONResponse:
         """Handle HTTP exceptions."""
         return JSONResponse(
             status_code=exc.status_code,

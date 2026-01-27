@@ -2,6 +2,8 @@
 Search endpoints.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 
 from src.api.dependencies import get_search_documents_use_case
@@ -19,7 +21,7 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 async def search_documents(
     request: SearchRequest,
     use_case: SearchDocumentsUseCase = Depends(get_search_documents_use_case),
-):
+) -> SearchResponse:
     """
     Search indexed documents.
 
@@ -38,7 +40,7 @@ async def quick_search(
     q: str,
     top_k: int = 5,
     use_case: SearchDocumentsUseCase = Depends(get_search_documents_use_case),
-):
+) -> SearchResponse:
     """
     Quick search with GET request.
 
@@ -62,7 +64,7 @@ async def quick_search(
 async def semantic_search(
     request: SearchRequest,
     use_case: SearchDocumentsUseCase = Depends(get_search_documents_use_case),
-):
+) -> SearchResponse:
     """
     Pure semantic (vector) search.
 
@@ -80,7 +82,7 @@ async def semantic_search(
 async def keyword_search(
     request: SearchRequest,
     use_case: SearchDocumentsUseCase = Depends(get_search_documents_use_case),
-):
+) -> SearchResponse:
     """
     Keyword (FTS5) search.
 
@@ -97,7 +99,7 @@ async def keyword_search(
 )
 async def get_cache_stats(
     use_case: SearchDocumentsUseCase = Depends(get_search_documents_use_case),
-):
+) -> dict[str, Any]:
     """Get search cache statistics."""
     return use_case.get_cache_stats()
 
@@ -107,7 +109,7 @@ async def get_cache_stats(
 )
 async def invalidate_cache(
     use_case: SearchDocumentsUseCase = Depends(get_search_documents_use_case),
-):
+) -> dict[str, str]:
     """Clear search cache."""
     use_case.invalidate_cache()
     return {"status": "cache_invalidated"}

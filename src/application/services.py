@@ -7,8 +7,13 @@ implementations to core services. Use cases should import from here.
 Clean Architecture: Application layer orchestrates DI, not core layer.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from src.core.interfaces import (
+    IHybridSearcher,
+    IReranker,
+    ISearchCache,
+)
 from src.core.services import (
     ChatService,
     DocumentIndexerService,
@@ -21,12 +26,9 @@ if TYPE_CHECKING:
     from src.core.interfaces import (
         IDocumentStore,
         IEmbeddingProvider,
-        IHybridSearcher,
         IInvoiceStore,
         ILLMProvider,
         IParserRegistry,
-        IReranker,
-        ISearchCache,
         ISessionStore,
         IVectorStore,
     )
@@ -66,10 +68,6 @@ def get_invoice_parser_service(
 
     # Lazy import infrastructure to avoid circular imports
     from src.infrastructure.parsers import get_parser_registry
-    from src.infrastructure.storage.sqlite import (
-        get_document_store as get_doc_store,
-        get_invoice_store as get_inv_store,
-    )
 
     registry = parser_registry or get_parser_registry()
     # Note: These are async but we handle sync for now
@@ -162,9 +160,9 @@ async def get_document_indexer_service(
 
     doc_store = document_store or await get_doc_store()
     embedder = embedding_provider or get_embedding_provider()
-    vec_store = vector_store or await get_vector_store()
+    vec_store = vector_store or get_vector_store()
 
-    service = DocumentIndexerService(
+    service = DocumentIndexerService(  # type: ignore[call-arg]
         document_store=doc_store,
         embedding_provider=embedder,
         vector_store=vec_store,
@@ -203,20 +201,20 @@ def get_search_service(
     from src.infrastructure.cache import get_search_cache
     from src.infrastructure.search import get_hybrid_searcher, get_reranker
 
-    hybrid_searcher = searcher or get_hybrid_searcher()
+    hybrid_searcher: IHybridSearcher = searcher or cast(IHybridSearcher, get_hybrid_searcher())
 
     # Optional components with graceful degradation
-    result_reranker = reranker
+    result_reranker: IReranker | None = reranker
     if result_reranker is None:
         try:
-            result_reranker = get_reranker()
+            result_reranker = cast(IReranker, get_reranker())
         except Exception:
             result_reranker = None
 
-    search_cache = cache
+    search_cache: ISearchCache | None = cache
     if search_cache is None:
         try:
-            search_cache = get_search_cache()
+            search_cache = cast(ISearchCache, get_search_cache())
         except Exception:
             search_cache = None
 
@@ -278,7 +276,7 @@ async def get_chat_service(
 
     service = ChatService(
         session_store=sess_store,
-        llm_provider=llm,
+        llm_provider=llm,  # type: ignore[arg-type]
         search_service=search,
     )
 

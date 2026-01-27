@@ -10,17 +10,16 @@ Tests:
 """
 
 import pytest
-import pytest_asyncio
 
 from src.core.entities import RowType
-from src.infrastructure.parsers.table_aware_parser import TableAwareParser
 from src.infrastructure.parsers.base import (
-    parse_number,
-    parse_date,
     is_bank_line,
     is_summary_or_meta_line,
+    parse_date,
+    parse_number,
     split_cells_by_whitespace,
 )
+from src.infrastructure.parsers.table_aware_parser import TableAwareParser
 
 
 class TestParseNumber:

@@ -9,7 +9,6 @@ Tests:
 - Edge cases (empty inputs, single source)
 """
 
-import pytest
 
 from src.core.entities import SearchResult
 from src.infrastructure.search.hybrid import reciprocal_rank_fusion

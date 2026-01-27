@@ -4,6 +4,8 @@ Pydantic v2 models for API request validation.
 These are the ONLY contracts between API and use cases.
 """
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -104,7 +106,7 @@ class SearchDocumentsRequest(BaseModel):
         default=True,
         description="Use cached results if available",
     )
-    filters: dict | None = Field(
+    filters: dict[str, Any] | None = Field(
         default=None,
         description="Metadata filters (e.g., {'vendor': 'VOLTA HUB', 'year': 2024})",
     )
@@ -174,7 +176,7 @@ class CreateSessionRequest(BaseModel):
         max_length=200,
         description="Session title",
     )
-    metadata: dict | None = Field(
+    metadata: dict[str, Any] | None = Field(
         default=None,
         description="Session metadata",
     )
@@ -187,7 +189,7 @@ class IndexDocumentRequest(BaseModel):
         ...,
         description="Path to document file",
     )
-    metadata: dict | None = Field(
+    metadata: dict[str, Any] | None = Field(
         default=None,
         description="Document metadata",
     )

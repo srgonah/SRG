@@ -1,5 +1,7 @@
 """Search schemas."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -10,7 +12,7 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=50)
     search_type: str = Field(default="hybrid", pattern="^(hybrid|semantic|keyword)$")
     use_reranker: bool = True
-    filters: dict | None = None
+    filters: dict[str, Any] | None = None
 
 
 class SearchResult(BaseModel):
@@ -20,7 +22,7 @@ class SearchResult(BaseModel):
     document_id: str
     content: str
     score: float
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
     page_number: int | None = None
     file_name: str | None = None
 

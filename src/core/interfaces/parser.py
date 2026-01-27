@@ -17,13 +17,13 @@ class ParserResult:
 
     success: bool
     invoice: Invoice | None = None
-    items: list[LineItem] = None
+    items: list[LineItem] | None = None
     confidence: float = 0.0
     parser_name: str = ""
     error: str | None = None
-    metadata: dict[str, Any] = None
+    metadata: dict[str, Any] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.items is None:
             self.items = []
         if self.metadata is None:
@@ -38,9 +38,9 @@ class TemplateMatch:
     template_name: str
     confidence: float
     company_key: str
-    parser_hints: dict[str, Any] = None
+    parser_hints: dict[str, Any] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.parser_hints is None:
             self.parser_hints = {}
 
@@ -73,7 +73,7 @@ class IInvoiceParser(ABC):
         self,
         text: str,
         filename: str,
-        hints: dict | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> ParserResult:
         """
         Parse invoice text into structured data.
@@ -89,7 +89,7 @@ class IInvoiceParser(ABC):
         pass
 
     @abstractmethod
-    def can_parse(self, text: str, hints: dict | None = None) -> float:
+    def can_parse(self, text: str, hints: dict[str, Any] | None = None) -> float:
         """
         Check if parser can handle this content.
 
@@ -137,12 +137,12 @@ class ITemplateDetector(ABC):
         pass
 
     @abstractmethod
-    def get_template(self, template_id: str) -> dict | None:
+    def get_template(self, template_id: str) -> dict[str, Any] | None:
         """Get template by ID."""
         pass
 
     @abstractmethod
-    def list_templates(self) -> list[dict]:
+    def list_templates(self) -> list[dict[str, Any]]:
         """List all loaded templates."""
         pass
 
@@ -226,7 +226,7 @@ class IParserRegistry(ABC):
         self,
         text: str,
         filename: str,
-        hints: dict | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> ParserResult:
         """
         Parse using the best available parser.
@@ -240,5 +240,27 @@ class IParserRegistry(ABC):
 
         Returns:
             ParserResult from first successful parser
+        """
+        pass
+
+    @abstractmethod
+    async def parse_with_parser(
+        self,
+        parser_name: str,
+        text: str,
+        filename: str,
+        hints: dict[str, Any] | None = None,
+    ) -> ParserResult:
+        """
+        Parse using a specific parser by name.
+
+        Args:
+            parser_name: Name of parser to use
+            text: Invoice text content
+            filename: Original filename
+            hints: Optional parsing hints
+
+        Returns:
+            ParserResult from specified parser
         """
         pass

@@ -2,6 +2,8 @@
 Document management endpoints.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from src.api.dependencies import get_doc_store, get_indexer
@@ -12,8 +14,25 @@ from src.application.dto.responses import (
     ErrorResponse,
     IndexingStatsResponse,
 )
+from src.core.services import DocumentIndexerService
+from src.infrastructure.storage.sqlite import SQLiteDocumentStore
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+def _doc_to_response(doc: Any) -> DocumentResponse:
+    """Map a Document entity to DocumentResponse DTO."""
+    return DocumentResponse(
+        id=str(doc.id) if doc.id else "0",
+        file_name=doc.filename,
+        file_path=doc.file_path,
+        file_type=doc.mime_type,
+        file_size=doc.file_size,
+        page_count=doc.page_count,
+        chunk_count=0,
+        indexed_at=doc.indexed_at,
+        metadata=doc.metadata,
+    )
 
 
 @router.post(
@@ -23,8 +42,9 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 )
 async def upload_document(
     file: UploadFile = File(...),
-    indexer=Depends(get_indexer),
-):
+    store: SQLiteDocumentStore = Depends(get_doc_store),
+    indexer: DocumentIndexerService = Depends(get_indexer),
+) -> DocumentResponse:
     """
     Upload and index a document.
 
@@ -33,9 +53,12 @@ async def upload_document(
     import tempfile
     from pathlib import Path
 
+    from src.core.entities.document import Document
+
     # Validate file type
     valid_extensions = (".pdf", ".txt", ".md")
-    if not file.filename.lower().endswith(valid_extensions):
+    filename = file.filename or ""
+    if not filename.lower().endswith(valid_extensions):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file type. Use: {', '.join(valid_extensions)}",
@@ -45,25 +68,24 @@ async def upload_document(
     content = await file.read()
     with tempfile.NamedTemporaryFile(
         delete=False,
-        suffix=Path(file.filename).suffix,
+        suffix=Path(filename).suffix,
     ) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
 
     try:
-        document = await indexer.index_document(tmp_path)
-
-        return DocumentResponse(
-            id=document.id,
-            file_name=document.file_name,
-            file_path=document.file_path,
-            file_type=document.file_type,
-            file_size=document.file_size,
-            page_count=document.page_count,
-            chunk_count=document.chunk_count,
-            indexed_at=document.indexed_at,
-            metadata=document.metadata,
+        # Create document record first, then index
+        doc = Document(
+            filename=filename,
+            original_filename=filename,
+            file_path=tmp_path,
+            file_size=len(content),
         )
+        saved_doc = await store.create_document(doc)
+        doc_id = saved_doc.id
+        if doc_id is not None:
+            await indexer.index_document(doc_id)
+        return _doc_to_response(saved_doc)
 
     finally:
         # Cleanup
@@ -76,29 +98,31 @@ async def upload_document(
 )
 async def index_document_by_path(
     request: IndexDocumentRequest,
-    indexer=Depends(get_indexer),
-):
+    store: SQLiteDocumentStore = Depends(get_doc_store),
+    indexer: DocumentIndexerService = Depends(get_indexer),
+) -> DocumentResponse:
     """
     Index a document from a file path.
 
     The file must be accessible from the server.
     """
-    document = await indexer.index_document(
-        request.file_path,
-        metadata=request.metadata,
-    )
+    from pathlib import Path
 
-    return DocumentResponse(
-        id=document.id,
-        file_name=document.file_name,
-        file_path=document.file_path,
-        file_type=document.file_type,
-        file_size=document.file_size,
-        page_count=document.page_count,
-        chunk_count=document.chunk_count,
-        indexed_at=document.indexed_at,
-        metadata=document.metadata,
+    from src.core.entities.document import Document
+
+    file_path = Path(request.file_path)
+    doc = Document(
+        filename=file_path.name,
+        original_filename=file_path.name,
+        file_path=request.file_path,
+        file_size=file_path.stat().st_size if file_path.exists() else 0,
+        metadata=request.metadata or {},
     )
+    saved_doc = await store.create_document(doc)
+    doc_id = saved_doc.id
+    if doc_id is not None:
+        await indexer.index_document(doc_id)
+    return _doc_to_response(saved_doc)
 
 
 @router.post(
@@ -109,33 +133,44 @@ async def index_directory(
     directory: str,
     recursive: bool = True,
     extensions: list[str] | None = None,
-    indexer=Depends(get_indexer),
-):
+    store: SQLiteDocumentStore = Depends(get_doc_store),
+    indexer: DocumentIndexerService = Depends(get_indexer),
+) -> list[DocumentResponse]:
     """
     Index all documents in a directory.
 
     Recursively indexes files with matching extensions.
     """
-    documents = await indexer.index_directory(
-        directory=directory,
-        recursive=recursive,
-        extensions=extensions,
-    )
+    from pathlib import Path
 
-    return [
-        DocumentResponse(
-            id=doc.id,
-            file_name=doc.file_name,
-            file_path=doc.file_path,
-            file_type=doc.file_type,
-            file_size=doc.file_size,
-            page_count=doc.page_count,
-            chunk_count=doc.chunk_count,
-            indexed_at=doc.indexed_at,
-            metadata=doc.metadata,
+    from src.core.entities.document import Document
+
+    dir_path = Path(directory)
+    if not dir_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Directory not found: {directory}",
         )
-        for doc in documents
-    ]
+
+    exts = set(extensions or [".pdf", ".txt", ".md"])
+    pattern = "**/*" if recursive else "*"
+    results: list[DocumentResponse] = []
+
+    for file_path in dir_path.glob(pattern):
+        if file_path.is_file() and file_path.suffix.lower() in exts:
+            doc = Document(
+                filename=file_path.name,
+                original_filename=file_path.name,
+                file_path=str(file_path),
+                file_size=file_path.stat().st_size,
+            )
+            saved_doc = await store.create_document(doc)
+            doc_id = saved_doc.id
+            if doc_id is not None:
+                await indexer.index_document(doc_id)
+            results.append(_doc_to_response(saved_doc))
+
+    return results
 
 
 @router.get(
@@ -145,27 +180,16 @@ async def index_directory(
 async def list_documents(
     limit: int = 20,
     offset: int = 0,
-    store=Depends(get_doc_store),
-):
+    store: SQLiteDocumentStore = Depends(get_doc_store),
+) -> DocumentListResponse:
     """List all indexed documents."""
     documents = await store.list_documents(limit=limit, offset=offset)
-    total = await store.count_documents()
+    # Get total by fetching all IDs (no dedicated count method)
+    all_docs = await store.list_documents(limit=999999)
+    total = len(all_docs)
 
     return DocumentListResponse(
-        documents=[
-            DocumentResponse(
-                id=doc.id,
-                file_name=doc.file_name,
-                file_path=doc.file_path,
-                file_type=doc.file_type,
-                file_size=doc.file_size,
-                page_count=doc.page_count,
-                chunk_count=doc.chunk_count,
-                indexed_at=doc.indexed_at,
-                metadata=doc.metadata,
-            )
-            for doc in documents
-        ],
+        documents=[_doc_to_response(doc) for doc in documents],
         total=total,
     )
 
@@ -175,8 +199,8 @@ async def list_documents(
     response_model=IndexingStatsResponse,
 )
 async def get_indexing_stats(
-    indexer=Depends(get_indexer),
-):
+    indexer: DocumentIndexerService = Depends(get_indexer),
+) -> IndexingStatsResponse:
     """Get indexing statistics."""
     stats = await indexer.get_indexing_stats()
 
@@ -197,10 +221,10 @@ async def get_indexing_stats(
 )
 async def get_document(
     document_id: str,
-    store=Depends(get_doc_store),
-):
+    store: SQLiteDocumentStore = Depends(get_doc_store),
+) -> DocumentResponse:
     """Get document by ID."""
-    document = await store.get_document(document_id)
+    document = await store.get_document(int(document_id))
 
     if not document:
         raise HTTPException(
@@ -208,17 +232,7 @@ async def get_document(
             detail=f"Document not found: {document_id}",
         )
 
-    return DocumentResponse(
-        id=document.id,
-        file_name=document.file_name,
-        file_path=document.file_path,
-        file_type=document.file_type,
-        file_size=document.file_size,
-        page_count=document.page_count,
-        chunk_count=document.chunk_count,
-        indexed_at=document.indexed_at,
-        metadata=document.metadata,
-    )
+    return _doc_to_response(document)
 
 
 @router.post(
@@ -227,22 +241,20 @@ async def get_document(
 )
 async def reindex_document(
     document_id: str,
-    indexer=Depends(get_indexer),
-):
+    store: SQLiteDocumentStore = Depends(get_doc_store),
+    indexer: DocumentIndexerService = Depends(get_indexer),
+) -> DocumentResponse:
     """Reindex an existing document."""
-    document = await indexer.reindex_document(document_id)
+    await indexer.index_document(int(document_id))
+    document = await store.get_document(int(document_id))
 
-    return DocumentResponse(
-        id=document.id,
-        file_name=document.file_name,
-        file_path=document.file_path,
-        file_type=document.file_type,
-        file_size=document.file_size,
-        page_count=document.page_count,
-        chunk_count=document.chunk_count,
-        indexed_at=document.indexed_at,
-        metadata=document.metadata,
-    )
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document not found: {document_id}",
+        )
+
+    return _doc_to_response(document)
 
 
 @router.delete(
@@ -251,10 +263,10 @@ async def reindex_document(
 )
 async def delete_document(
     document_id: str,
-    indexer=Depends(get_indexer),
-):
+    indexer: DocumentIndexerService = Depends(get_indexer),
+) -> None:
     """Delete a document and its index data."""
-    result = await indexer.delete_document(document_id)
+    result = await indexer.delete_document_index(int(document_id))
 
     if not result:
         raise HTTPException(

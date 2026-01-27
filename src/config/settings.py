@@ -5,7 +5,7 @@ Loads configuration from environment variables with sensible defaults.
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -169,7 +169,7 @@ class Settings(BaseSettings):
 
     @field_validator("storage", mode="before")
     @classmethod
-    def ensure_data_dir(cls, v):
+    def ensure_data_dir(cls, v: Any) -> StorageSettings:
         if isinstance(v, dict):
             settings = StorageSettings(**v)
         else:

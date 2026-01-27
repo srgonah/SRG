@@ -10,13 +10,13 @@ Tests:
 - Error handling and graceful degradation
 """
 
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from src.core.entities.session import ChatSession, MemoryFact, Message, MessageRole
 from src.core.exceptions import ChatError
+from src.core.interfaces.llm import LLMResponse
 from src.core.services.chat_service import ChatService
 from src.core.services.search_service import SearchContext
 
@@ -114,10 +114,10 @@ class MockLLMProvider:
         """Return the first prompt (usually the chat prompt, before fact extraction)."""
         return self.prompts[0] if self.prompts else None
 
-    async def generate(self, prompt: str, max_tokens: int = 2048, temperature: float = 0.7) -> str:
+    async def generate(self, prompt: str, max_tokens: int = 2048, temperature: float = 0.7) -> LLMResponse:
         self.generate_called = True
         self.prompts.append(prompt)
-        return self.response
+        return LLMResponse(text=self.response, model="mock")
 
     async def generate_stream(self, prompt: str, max_tokens: int = 2048, temperature: float = 0.7):
         self.generate_called = True

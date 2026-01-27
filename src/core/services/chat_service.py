@@ -20,7 +20,7 @@ from src.core.exceptions import ChatError
 from src.core.interfaces import ILLMProvider, ISessionStore
 
 # Import SearchService for type hints only - it's also a core service
-from src.core.services.search_service import SearchContext, SearchService
+from src.core.services.search_service import SearchService
 
 
 class ChatService:
@@ -176,18 +176,19 @@ class ChatService:
             )
 
             # Generate response
-            response_text = await self._llm.generate(
+            response = await self._llm.generate(
                 prompt,
                 max_tokens=self._max_tokens,
                 temperature=self._temperature,
             )
+            response_text = response.text
 
             # Save assistant message
             assistant_msg = Message(
                 session_id=session.session_id,
                 role=MessageRole.ASSISTANT,
                 content=response_text,
-                context_used=context if context else None,
+                metadata={"context_used": context} if context else {},
             )
             assistant_msg = await self._store.add_message(assistant_msg)
 
@@ -287,7 +288,7 @@ class ChatService:
                 session_id=session.session_id,
                 role=MessageRole.ASSISTANT,
                 content=full_response,
-                context_used=context if context else None,
+                metadata={"context_used": context} if context else {},
             )
             await self._store.add_message(assistant_msg)
 
@@ -345,11 +346,12 @@ If no important facts, respond with "NONE".
 
 Facts:"""
 
-            response = await self._llm.generate(
+            llm_response = await self._llm.generate(
                 prompt,
                 max_tokens=200,
                 temperature=0.1,
             )
+            response = llm_response.text
 
             if "NONE" in response.upper():
                 return
@@ -409,12 +411,12 @@ Facts:"""
 Summary:"""
 
         try:
-            summary = await self._llm.generate(
+            summary_response = await self._llm.generate(
                 prompt,
                 max_tokens=150,
                 temperature=0.3,
             )
-            return summary.strip()
+            return summary_response.text.strip()
         except Exception:
             return "Unable to generate summary"
 

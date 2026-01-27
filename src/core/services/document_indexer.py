@@ -8,7 +8,7 @@ NO infrastructure imports - depends only on core entities, interfaces, exception
 from datetime import datetime
 from typing import Any
 
-from src.core.entities.document import Chunk, Document, IndexingState, Page
+from src.core.entities.document import Chunk, Document, DocumentStatus, IndexingState, Page
 from src.core.exceptions import IndexingError
 from src.core.interfaces import (
     IDocumentStore,
@@ -120,7 +120,7 @@ class DocumentIndexerService:
                         )
 
             # Update document status
-            document.status = "indexed"
+            document.status = DocumentStatus.INDEXED
             document.indexed_at = datetime.now()
             await self._doc_store.update_document(document)
 
@@ -131,7 +131,7 @@ class DocumentIndexerService:
 
         except Exception as e:
             # Mark document as failed
-            document.status = "failed"
+            document.status = DocumentStatus.FAILED
             document.error_message = str(e)
             await self._doc_store.update_document(document)
             raise IndexingError(f"Failed to index document {document_id}: {str(e)}")
@@ -278,8 +278,8 @@ class DocumentIndexerService:
 
             for i, chunk_text in enumerate(page_chunks):
                 chunk = Chunk(
-                    doc_id=document.id,
-                    page_id=page.id,
+                    doc_id=document.id or 0,
+                    page_id=page.id or 0,
                     chunk_index=i,
                     chunk_text=chunk_text,
                     chunk_size=len(chunk_text),
@@ -343,7 +343,7 @@ class DocumentIndexerService:
 
         texts = [c.embedding_text for c in chunks]
 
-        embeddings = await self._embedder.embed_batch(texts)
+        embeddings = self._embedder.embed_batch(texts)
 
         for chunk, embedding in zip(chunks, embeddings):
             chunk.metadata["embedding"] = embedding

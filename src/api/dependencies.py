@@ -27,8 +27,12 @@ from src.core.services import (
     InvoiceParserService,
     SearchService,
 )
+from src.core.interfaces import ILLMProvider
 from src.infrastructure.llm import get_llm_provider
 from src.infrastructure.storage.sqlite import (
+    SQLiteDocumentStore,
+    SQLiteInvoiceStore,
+    SQLiteSessionStore,
     get_document_store,
     get_invoice_store,
     get_session_store,
@@ -89,22 +93,22 @@ async def get_chat_use_case() -> ChatWithContextUseCase:
 
 
 # Store dependencies
-async def get_doc_store():
+async def get_doc_store() -> SQLiteDocumentStore:
     """Get document store."""
     return await get_document_store()
 
 
-async def get_inv_store():
+async def get_inv_store() -> SQLiteInvoiceStore:
     """Get invoice store."""
     return await get_invoice_store()
 
 
-async def get_sess_store():
+async def get_sess_store() -> SQLiteSessionStore:
     """Get session store."""
     return await get_session_store()
 
 
 # LLM dependency
-def get_llm():
+def get_llm() -> ILLMProvider:
     """Get LLM provider."""
     return get_llm_provider()

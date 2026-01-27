@@ -6,12 +6,12 @@ Handles invoices, line items, and audit results.
 
 import json
 from datetime import datetime
+from typing import Any
 
 import aiosqlite
 
 from src.config import get_logger
 from src.core.entities import (
-    ArithmeticCheck,
     ArithmeticCheckContainer,
     AuditIssue,
     AuditResult,
@@ -365,7 +365,7 @@ class SQLiteInvoiceStore(IInvoiceStore):
         self,
         last_item_id: int = 0,
         limit: int = 1000,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Get items that need indexing."""
         async with get_connection() as conn:
             cursor = await conn.execute(

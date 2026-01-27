@@ -250,7 +250,7 @@ class SQLiteSessionStore(ISessionStore):
             )
             rows = await cursor.fetchall()
             # Reverse to get chronological order
-            return [self._row_to_message(row) for row in reversed(rows)]
+            return [self._row_to_message(row) for row in reversed(list(rows))]
 
     # Memory operations
 

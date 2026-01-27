@@ -246,7 +246,7 @@ class SQLiteDocumentStore(IDocumentStore):
                 SELECT id, chunk_text FROM doc_chunks
                 WHERE id IN (SELECT MAX(id) FROM doc_chunks GROUP BY id HAVING MAX(id) > ?)
                 """,
-                (chunks[0].id - 1 if chunks else 0,),
+                ((chunks[0].id or 0) - 1 if chunks else 0,),
             )
 
             return chunks

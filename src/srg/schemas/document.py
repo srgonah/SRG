@@ -1,6 +1,7 @@
 """Document schemas."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -18,7 +19,7 @@ class DocumentResponse(BaseModel):
     page_count: int = 0
     chunk_count: int = 0
     indexed_at: datetime | None = None
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
 
 
 class DocumentListResponse(BaseModel):

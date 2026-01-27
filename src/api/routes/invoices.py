@@ -2,6 +2,8 @@
 Invoice management endpoints.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from src.api.dependencies import (
@@ -11,11 +13,14 @@ from src.api.dependencies import (
 )
 from src.application.dto.requests import AuditInvoiceRequest, UploadInvoiceRequest
 from src.application.dto.responses import (
+    AuditFindingResponse,
     AuditResultResponse,
     ErrorResponse,
     InvoiceResponse,
+    LineItemResponse,
 )
 from src.application.use_cases import AuditInvoiceUseCase, UploadInvoiceUseCase
+from src.infrastructure.storage.sqlite import SQLiteInvoiceStore
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -34,7 +39,7 @@ async def upload_invoice(
     template_id: str | None = None,
     auto_audit: bool = True,
     use_case: UploadInvoiceUseCase = Depends(get_upload_invoice_use_case),
-):
+) -> dict[str, Any]:
     """
     Upload and process an invoice.
 
@@ -81,7 +86,7 @@ async def audit_invoice(
     invoice_id: str,
     use_llm: bool = True,
     use_case: AuditInvoiceUseCase = Depends(get_audit_invoice_use_case),
-):
+) -> AuditResultResponse:
     """
     Audit an existing invoice.
 
@@ -111,10 +116,16 @@ async def audit_invoice(
 )
 async def get_invoice(
     invoice_id: str,
-    store=Depends(get_inv_store),
-):
+    store: SQLiteInvoiceStore = Depends(get_inv_store),
+) -> InvoiceResponse:
     """Get invoice by ID."""
-    invoice = await store.get_invoice(invoice_id)
+    try:
+        invoice = await store.get_invoice(int(invoice_id))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
 
     if not invoice:
         raise HTTPException(
@@ -136,15 +147,15 @@ async def get_invoice(
         total_amount=invoice.total_amount,
         currency=invoice.currency,
         line_items=[
-            {
-                "description": item.description or item.item_name,
-                "quantity": item.quantity,
-                "unit": item.unit,
-                "unit_price": item.unit_price,
-                "total_price": item.total_price,
-                "hs_code": item.hs_code,
-                "reference": None,  # Not in entity
-            }
+            LineItemResponse(
+                description=item.description or item.item_name,
+                quantity=item.quantity,
+                unit=item.unit,
+                unit_price=item.unit_price,
+                total_price=item.total_price,
+                hs_code=item.hs_code,
+                reference=None,  # Not in entity
+            )
             for item in invoice.items
         ],
         calculated_total=invoice.calculated_total,
@@ -161,8 +172,8 @@ async def get_invoice(
 async def list_invoices(
     limit: int = 20,
     offset: int = 0,
-    store=Depends(get_inv_store),
-):
+    store: SQLiteInvoiceStore = Depends(get_inv_store),
+) -> dict[str, Any]:
     """List all invoices with pagination."""
     invoices = await store.list_invoices(limit=limit, offset=offset)
     total = await store.count_invoices() if hasattr(store, 'count_invoices') else len(invoices)
@@ -197,10 +208,16 @@ async def list_invoices(
 )
 async def delete_invoice(
     invoice_id: str,
-    store=Depends(get_inv_store),
-):
+    store: SQLiteInvoiceStore = Depends(get_inv_store),
+) -> None:
     """Delete an invoice."""
-    result = await store.delete_invoice(invoice_id)
+    try:
+        result = await store.delete_invoice(int(invoice_id))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
 
     if not result:
         raise HTTPException(
@@ -216,10 +233,10 @@ async def delete_invoice(
 async def get_invoice_audits(
     invoice_id: str,
     limit: int = 10,
-    store=Depends(get_inv_store),
-):
+    store: SQLiteInvoiceStore = Depends(get_inv_store),
+) -> list[AuditResultResponse]:
     """Get audit history for an invoice."""
-    audits = await store.get_audit_results(invoice_id, limit=limit)
+    audits = await store.list_audit_results(invoice_id=int(invoice_id), limit=limit)
 
     return [
         AuditResultResponse(
@@ -228,15 +245,15 @@ async def get_invoice_audits(
             passed=ar.passed,
             confidence=ar.confidence,
             findings=[
-                {
-                    "code": issue.code,
-                    "category": issue.category,
-                    "severity": issue.severity.value if hasattr(issue.severity, 'value') else str(issue.severity),
-                    "message": issue.message,
-                    "field": issue.field,
-                    "expected": issue.expected,
-                    "actual": issue.actual,
-                }
+                AuditFindingResponse(
+                    code=issue.code,
+                    category=issue.category,
+                    severity=issue.severity.value if hasattr(issue.severity, 'value') else str(issue.severity),
+                    message=issue.message,
+                    field=issue.field,
+                    expected=issue.expected,
+                    actual=issue.actual,
+                )
                 for issue in ar.issues
             ],
             audited_at=ar.audited_at or ar.created_at,

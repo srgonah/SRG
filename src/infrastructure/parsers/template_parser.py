@@ -6,8 +6,9 @@ Matches invoices against company templates for structured extraction.
 
 import re
 from pathlib import Path
+from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from src.config import get_logger, get_settings
 from src.core.entities import Invoice, LineItem, RowType
@@ -24,8 +25,8 @@ class TemplateDetector(ITemplateDetector):
     Uses regex patterns defined in template YAML files.
     """
 
-    def __init__(self):
-        self._templates: dict[str, dict] = {}
+    def __init__(self) -> None:
+        self._templates: dict[str, dict[str, Any]] = {}
         self._detection_cache: dict[str, TemplateMatch | None] = {}
 
     def load_templates(self, template_dir: str) -> int:
@@ -96,7 +97,7 @@ class TemplateDetector(ITemplateDetector):
         self._detection_cache[cache_key] = None
         return None
 
-    def _calculate_match_score(self, text: str, template: dict) -> float:
+    def _calculate_match_score(self, text: str, template: dict[str, Any]) -> float:
         """Calculate match score for a template."""
         patterns = template.get("detection_patterns", [])
         if not patterns:
@@ -114,11 +115,11 @@ class TemplateDetector(ITemplateDetector):
 
         return matches / total if total > 0 else 0.0
 
-    def get_template(self, template_id: str) -> dict | None:
+    def get_template(self, template_id: str) -> dict[str, Any] | None:
         """Get template by ID."""
         return self._templates.get(template_id)
 
-    def list_templates(self) -> list[dict]:
+    def list_templates(self) -> list[dict[str, Any]]:
         """List all loaded templates."""
         return [
             {
@@ -148,7 +149,7 @@ class TemplateParser(IInvoiceParser):
     def priority(self) -> int:
         return 100  # Highest priority
 
-    def can_parse(self, text: str, hints: dict | None = None) -> float:
+    def can_parse(self, text: str, hints: dict[str, Any] | None = None) -> float:
         """Check if a template matches this invoice."""
         match = self._detector.detect(text)
         return match.confidence if match else 0.0
@@ -157,7 +158,7 @@ class TemplateParser(IInvoiceParser):
         self,
         text: str,
         filename: str,
-        hints: dict | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> ParserResult:
         """Parse invoice using matched template."""
         # Detect template
@@ -216,7 +217,7 @@ class TemplateParser(IInvoiceParser):
                 error=str(e),
             )
 
-    async def _extract_metadata(self, text: str, template: dict) -> Invoice:
+    async def _extract_metadata(self, text: str, template: dict[str, Any]) -> Invoice:
         """Extract invoice metadata using template patterns."""
         invoice = Invoice()
 
@@ -233,7 +234,7 @@ class TemplateParser(IInvoiceParser):
                     if field == "invoice_no":
                         invoice.invoice_no = value
                     elif field == "invoice_date":
-                        invoice.invoice_date = value
+                        invoice.invoice_date = value  # type: ignore[assignment]
                     elif field == "seller_name":
                         invoice.seller_name = value
                     elif field == "buyer_name":
@@ -248,9 +249,9 @@ class TemplateParser(IInvoiceParser):
 
         return invoice
 
-    async def _extract_items(self, text: str, template: dict) -> list[LineItem]:
+    async def _extract_items(self, text: str, template: dict[str, Any]) -> list[LineItem]:
         """Extract line items using template patterns."""
-        items = []
+        items: list[LineItem] = []
 
         item_pattern = template.get("item_pattern")
         if not item_pattern:

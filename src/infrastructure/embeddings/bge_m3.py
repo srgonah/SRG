@@ -4,6 +4,8 @@ BGE-M3 embedding provider implementation.
 Provides dense embeddings using sentence-transformers.
 """
 
+from typing import Any
+
 import numpy as np
 
 from src.config import get_logger, get_settings
@@ -19,7 +21,7 @@ try:
     SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
-    SentenceTransformer = None
+    SentenceTransformer = None  # type: ignore[misc, assignment]
 
 
 class BGEM3EmbeddingProvider(IEmbeddingProvider):
@@ -29,7 +31,7 @@ class BGEM3EmbeddingProvider(IEmbeddingProvider):
     Provides multilingual dense embeddings optimized for retrieval.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         if not SENTENCE_TRANSFORMERS_AVAILABLE:
             raise ImportError(
                 "sentence-transformers not installed. "
@@ -43,7 +45,7 @@ class BGEM3EmbeddingProvider(IEmbeddingProvider):
         self.device = settings.embedding.device
         self.normalize = settings.embedding.normalize
 
-        self._model: SentenceTransformer | None = None
+        self._model: Any = None
 
     def _load_model(self) -> None:
         """Load the model if not already loaded."""
@@ -75,12 +77,13 @@ class BGEM3EmbeddingProvider(IEmbeddingProvider):
             return np.zeros(self.dimension, dtype=np.float32)
 
         try:
+            assert self._model is not None
             embedding = self._model.encode(
                 text,
                 normalize_embeddings=self.normalize,
                 show_progress_bar=False,
             )
-            return embedding.astype(np.float32)
+            return np.asarray(embedding, dtype=np.float32)
 
         except Exception as e:
             logger.error("embedding_error", text_len=len(text), error=str(e))
@@ -89,7 +92,7 @@ class BGEM3EmbeddingProvider(IEmbeddingProvider):
     def embed_batch(
         self,
         texts: list[str],
-        batch_size: int = None,
+        batch_size: int | None = None,
     ) -> np.ndarray:
         """Generate embeddings for multiple texts."""
         self._load_model()
@@ -118,6 +121,7 @@ class BGEM3EmbeddingProvider(IEmbeddingProvider):
                 batch_size=batch_size,
             )
 
+            assert self._model is not None
             embeddings = self._model.encode(
                 valid_texts,
                 batch_size=batch_size,

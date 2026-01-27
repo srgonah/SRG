@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -86,14 +87,14 @@ async def get_current_version(conn: aiosqlite.Connection) -> str | None:
         )
         row = await cursor.fetchone()
         if row:
-            return row[0]
+            return str(row[0])
 
         # Fall back to legacy schema_version table
         cursor = await conn.execute(
             "SELECT version FROM schema_version ORDER BY applied_at DESC LIMIT 1"
         )
         row = await cursor.fetchone()
-        return row[0] if row else None
+        return str(row[0]) if row else None
     except aiosqlite.OperationalError:
         return None
 
@@ -112,7 +113,7 @@ def discover_migrations() -> list[MigrationInfo]:
 async def validate_pre_migration(
     conn: aiosqlite.Connection,
     migration: MigrationInfo,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Run pre-migration validation checks."""
     checks = []
 
@@ -140,7 +141,7 @@ async def validate_pre_migration(
 async def validate_post_migration(
     conn: aiosqlite.Connection,
     migration: MigrationInfo,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Run post-migration validation checks."""
     checks = []
 
@@ -159,7 +160,7 @@ async def validate_post_migration(
 
     # Verify foreign key integrity
     cursor = await conn.execute("PRAGMA foreign_key_check")
-    violations = await cursor.fetchall()
+    violations = list(await cursor.fetchall())
     if violations:
         checks.append({
             "check": "foreign_key_violation",
@@ -282,7 +283,7 @@ async def initialize_database(
     if create_backup_before and db_path.exists():
         backup_path = create_backup(db_path)
 
-    results = []
+    results: list[MigrationResult] = []
 
     try:
         async with aiosqlite.connect(db_path) as conn:
@@ -363,7 +364,7 @@ async def initialize_database(
 run_migrations = initialize_database
 
 
-async def rebuild_fts_indexes(db_path: Path | None = None) -> dict:
+async def rebuild_fts_indexes(db_path: Path | None = None) -> dict[str, int]:
     """
     Rebuild FTS5 indexes from source tables.
 
@@ -404,7 +405,7 @@ async def rebuild_fts_indexes(db_path: Path | None = None) -> dict:
     return stats
 
 
-async def get_migration_status(db_path: Path | None = None) -> dict:
+async def get_migration_status(db_path: Path | None = None) -> dict[str, Any]:
     """
     Get current migration status.
 
@@ -441,7 +442,7 @@ async def get_migration_status(db_path: Path | None = None) -> dict:
         }
 
 
-async def verify_schema_integrity(db_path: Path | None = None) -> list[dict]:
+async def verify_schema_integrity(db_path: Path | None = None) -> list[dict[str, Any]]:
     """
     Verify database schema integrity.
 
@@ -451,12 +452,12 @@ async def verify_schema_integrity(db_path: Path | None = None) -> list[dict]:
     settings = get_settings()
     db_path = db_path or settings.storage.db_path
 
-    checks = []
+    checks: list[dict[str, Any]] = []
 
     async with aiosqlite.connect(db_path) as conn:
         # Check foreign key integrity
         cursor = await conn.execute("PRAGMA foreign_key_check")
-        fk_violations = await cursor.fetchall()
+        fk_violations = list(await cursor.fetchall())
         checks.append({
             "check": "foreign_keys",
             "status": "PASS" if not fk_violations else "FAIL",
@@ -466,10 +467,11 @@ async def verify_schema_integrity(db_path: Path | None = None) -> list[dict]:
         # Check integrity
         cursor = await conn.execute("PRAGMA integrity_check")
         integrity = await cursor.fetchone()
+        integrity_result = integrity[0] if integrity else "unknown"
         checks.append({
             "check": "integrity",
-            "status": "PASS" if integrity[0] == "ok" else "FAIL",
-            "result": integrity[0],
+            "status": "PASS" if integrity_result == "ok" else "FAIL",
+            "result": integrity_result,
         })
 
         # Check required tables exist
@@ -544,19 +546,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    async def run():
+    async def run() -> None:
         if args.status:
-            status = await get_migration_status(args.db_path)
-            print(f"Database exists: {status['exists']}")
-            print(f"Current version: {status.get('current_version', 'N/A')}")
-            print(f"Applied migrations: {status.get('applied_migrations', [])}")
-            print(f"Pending migrations: {status.get('pending_migrations', [])}")
+            migration_status = await get_migration_status(args.db_path)
+            print(f"Database exists: {migration_status['exists']}")
+            print(f"Current version: {migration_status.get('current_version', 'N/A')}")
+            print(f"Applied migrations: {migration_status.get('applied_migrations', [])}")
+            print(f"Pending migrations: {migration_status.get('pending_migrations', [])}")
 
         elif args.verify:
             checks = await verify_schema_integrity(args.db_path)
             for check in checks:
-                status = "PASS" if check["status"] == "PASS" else "FAIL"
-                print(f"[{status}] {check['check']}")
+                check_status = "PASS" if check["status"] == "PASS" else "FAIL"
+                print(f"[{check_status}] {check['check']}")
                 if check["status"] != "PASS":
                     for key, value in check.items():
                         if key not in ("check", "status"):
@@ -572,8 +574,8 @@ def main() -> None:
                 create_backup_before=not args.no_backup,
             )
             for result in results:
-                status = "SUCCESS" if result.success else "FAILED"
-                print(f"[{status}] v{result.version}: {result.name} ({result.execution_time_ms}ms)")
+                result_status = "SUCCESS" if result.success else "FAILED"
+                print(f"[{result_status}] v{result.version}: {result.name} ({result.execution_time_ms}ms)")
                 if result.error:
                     print(f"         Error: {result.error}")
 

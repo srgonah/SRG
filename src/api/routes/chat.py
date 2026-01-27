@@ -2,6 +2,9 @@
 Chat endpoints.
 """
 
+from collections.abc import AsyncIterator
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
@@ -23,7 +26,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 async def chat(
     request: ChatRequest,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> ChatResponse | StreamingResponse:
     """
     Send a chat message.
 
@@ -44,14 +47,14 @@ async def chat(
 async def chat_stream(
     request: ChatRequest,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> StreamingResponse:
     """
     Stream a chat response.
 
     Returns Server-Sent Events with response chunks.
     """
 
-    async def generate():
+    async def generate() -> AsyncIterator[str]:
         try:
             async for chunk in use_case.stream(request):
                 yield f"data: {chunk}\n\n"
@@ -76,7 +79,7 @@ async def get_context_for_query(
     query: str,
     top_k: int = 5,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> dict[str, Any]:
     """
     Get context that would be used for a query.
 

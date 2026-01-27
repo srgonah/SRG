@@ -4,6 +4,8 @@ LLM provider factory.
 Creates appropriate provider based on configuration.
 """
 
+from typing import Any
+
 from src.config import get_logger, get_settings
 from src.core.interfaces import ILLMProvider, IVisionProvider
 
@@ -60,7 +62,7 @@ def get_vision_provider() -> IVisionProvider:
     return get_ollama_provider()
 
 
-async def check_llm_health() -> dict:
+async def check_llm_health() -> dict[str, Any]:
     """
     Check health of all configured LLM providers.
 

@@ -10,16 +10,14 @@ Tests:
 - Graceful error handling
 """
 
-import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pydantic import ValidationError
+import pytest
 
 from src.infrastructure.parsers.vision_parser import (
-    VisionParser,
     VisionInvoiceResponse,
     VisionLineItem,
+    VisionParser,
 )
 
 

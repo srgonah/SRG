@@ -5,7 +5,7 @@ Tests the invoice upload flow with mocked services and stores.
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -74,7 +74,7 @@ def mock_parser_service():
     """Create a mock parser service."""
     mock = MagicMock()
     mock.parse_invoice = AsyncMock()
-    mock.validate_invoice = AsyncMock(return_value=[])
+    mock.validate_invoice = MagicMock(return_value=[])
     return mock
 
 

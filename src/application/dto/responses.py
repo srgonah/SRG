@@ -5,6 +5,7 @@ These are the ONLY contracts between use cases and API layer.
 """
 
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -99,7 +100,7 @@ class SearchResultResponse(BaseModel):
     document_id: str = Field(..., description="Source document ID")
     content: str = Field(..., description="Matched text content")
     score: float = Field(..., ge=0.0, description="Relevance score")
-    metadata: dict = Field(default={}, description="Additional metadata")
+    metadata: dict[str, Any] = Field(default={}, description="Additional metadata")
     page_number: int | None = Field(default=None, description="Source page number")
     file_name: str | None = Field(default=None, description="Source filename")
     highlight: str | None = Field(default=None, description="Highlighted snippet")
@@ -180,7 +181,7 @@ class SessionResponse(BaseModel):
     message_count: int
     created_at: datetime
     updated_at: datetime
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
 
 
 class SessionListResponse(BaseModel):
@@ -201,7 +202,7 @@ class DocumentResponse(BaseModel):
     page_count: int = 0
     chunk_count: int = 0
     indexed_at: datetime | None = None
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
 
 
 class DocumentListResponse(BaseModel):

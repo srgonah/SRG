@@ -180,7 +180,7 @@ class IInvoiceStore(ABC):
         self,
         last_item_id: int = 0,
         limit: int = 1000,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Get items that need indexing."""
         pass
 
@@ -303,7 +303,7 @@ class IVectorStore(ABC):
         pass
 
     @abstractmethod
-    async def get_index_stats(self, index_name: str) -> dict:
+    async def get_index_stats(self, index_name: str) -> dict[str, Any]:
         """Get index statistics."""
         pass
 

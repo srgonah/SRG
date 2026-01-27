@@ -1,8 +1,11 @@
 """Invoice management endpoints."""
 
+from typing import Any
+
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from src.application.dto.requests import AuditInvoiceRequest, UploadInvoiceRequest
+from src.application.dto.responses import AuditResultResponse as AuditResultDTO
 from src.application.use_cases import AuditInvoiceUseCase, UploadInvoiceUseCase
 from src.srg.api.deps import (
     InvoiceStoreDep,
@@ -25,7 +28,7 @@ async def upload_invoice(
     file: UploadFile = File(...),
     vendor_hint: str | None = None,
     auto_audit: bool = True,
-):
+) -> dict[str, Any]:
     """Upload and process an invoice."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
@@ -56,7 +59,7 @@ async def list_invoices(
     store: InvoiceStoreDep,
     limit: int = 20,
     offset: int = 0,
-):
+) -> InvoiceListResponse:
     """List all invoices with pagination."""
     invoices = await store.list_invoices(limit=limit, offset=offset)
     total = await store.count_invoices()
@@ -70,9 +73,9 @@ async def list_invoices(
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
-async def get_invoice(invoice_id: str, store: InvoiceStoreDep):
+async def get_invoice(invoice_id: str, store: InvoiceStoreDep) -> InvoiceResponse:
     """Get invoice by ID."""
-    invoice = await store.get_invoice(invoice_id)
+    invoice = await store.get_invoice(int(invoice_id))
     if not invoice:
         raise HTTPException(status_code=404, detail=f"Invoice not found: {invoice_id}")
 
@@ -83,7 +86,7 @@ async def get_invoice(invoice_id: str, store: InvoiceStoreDep):
 async def audit_invoice(
     invoice_id: str,
     use_llm: bool = True,
-):
+) -> AuditResultDTO:
     """Audit an existing invoice."""
     use_case = AuditInvoiceUseCase()
     request = AuditInvoiceRequest(invoice_id=invoice_id, use_llm=use_llm)
@@ -96,8 +99,8 @@ async def audit_invoice(
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_invoice(invoice_id: str, store: InvoiceStoreDep):
+async def delete_invoice(invoice_id: str, store: InvoiceStoreDep) -> None:
     """Delete an invoice."""
-    result = await store.delete_invoice(invoice_id)
+    result = await store.delete_invoice(int(invoice_id))
     if not result:
         raise HTTPException(status_code=404, detail=f"Invoice not found: {invoice_id}")

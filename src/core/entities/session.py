@@ -47,7 +47,7 @@ class Message(BaseModel):
 
     # RAG context (if message includes search results)
     search_query: str | None = None
-    search_results: list[dict] = Field(default_factory=list)
+    search_results: list[dict[str, Any]] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
 
     # Token counts (for context management)
@@ -153,7 +153,7 @@ class ChatSession(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_message_at: datetime | None = None
 
-    def add_message(self, role: MessageRole, content: str, **kwargs) -> Message:
+    def add_message(self, role: MessageRole, content: str, **kwargs: Any) -> Message:
         """Add a message to the session."""
         message = Message(session_id=self.session_id, role=role, content=content, **kwargs)
         self.messages.append(message)
@@ -171,7 +171,7 @@ class ChatSession(BaseModel):
             return []
 
         # Start from most recent and work backwards
-        context = []
+        context: list[Message] = []
         tokens_used = 0
 
         for msg in reversed(self.messages):
@@ -183,7 +183,7 @@ class ChatSession(BaseModel):
         return context
 
     def add_memory_fact(
-        self, fact_type: MemoryFactType, key: str, value: str, **kwargs
+        self, fact_type: MemoryFactType, key: str, value: str, **kwargs: Any
     ) -> MemoryFact:
         """Add or update a memory fact."""
         # Check if fact with same key exists

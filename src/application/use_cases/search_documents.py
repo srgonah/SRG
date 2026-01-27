@@ -6,6 +6,7 @@ Handles document search with various modes.
 
 import time
 from dataclasses import dataclass
+from typing import Any
 
 from src.application.dto.requests import SearchRequest
 from src.application.dto.responses import SearchResponse, SearchResultResponse
@@ -110,10 +111,10 @@ class SearchDocumentsUseCase:
             query=result.query,
             results=[
                 SearchResultResponse(
-                    chunk_id=r.chunk_id,
-                    document_id=r.document_id,
-                    content=r.content,
-                    score=r.score,
+                    chunk_id=str(r.chunk_id) if r.chunk_id is not None else "",
+                    document_id=str(r.doc_id) if r.doc_id is not None else "",
+                    content=r.text,
+                    score=r.final_score,
                     metadata=r.metadata,
                     page_number=r.metadata.get("page_number"),
                     file_name=r.metadata.get("file_name"),
@@ -130,7 +131,7 @@ class SearchDocumentsUseCase:
         search = self._get_search()
         search.invalidate_cache()
 
-    def get_cache_stats(self) -> dict:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         search = self._get_search()
         return search.cache_stats()

@@ -5,6 +5,7 @@ Handles complex invoice layouts with column detection and multi-line description
 """
 
 import re
+from typing import Any
 
 from src.config import get_logger
 from src.core.entities import Invoice, LineItem, RowType
@@ -95,7 +96,7 @@ class TableAwareParser(IInvoiceParser):
     def priority(self) -> int:
         return 80
 
-    def can_parse(self, text: str, hints: dict | None = None) -> float:
+    def can_parse(self, text: str, hints: dict[str, Any] | None = None) -> float:
         """
         Check if text has table-like structure.
 
@@ -107,7 +108,7 @@ class TableAwareParser(IInvoiceParser):
         lines = text.split("\n")
 
         # Check for header row
-        header_score = 0
+        header_score = 0.0
         for line in lines[:30]:
             matches = sum(
                 1
@@ -133,7 +134,7 @@ class TableAwareParser(IInvoiceParser):
         self,
         text: str,
         filename: str,
-        hints: dict | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> ParserResult:
         """Parse invoice using table-aware logic."""
         hints = hints or {}
@@ -305,8 +306,8 @@ class TableAwareParser(IInvoiceParser):
     def _find_header(
         self,
         lines: list[str],
-        hints: dict,
-    ) -> tuple[int, dict]:
+        hints: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
         """Find header row and build column map."""
         min_gap = hints.get("min_gap", 2)
         header_pattern = hints.get("header_row_pattern")
@@ -338,7 +339,7 @@ class TableAwareParser(IInvoiceParser):
 
         return -1, {}
 
-    def _classify_cells(self, cells: list[dict]) -> dict:
+    def _classify_cells(self, cells: list[dict[str, Any]]) -> dict[str, Any]:
         """Classify header cells into column types."""
         column_map = {}
 
@@ -362,7 +363,7 @@ class TableAwareParser(IInvoiceParser):
         self,
         lines: list[str],
         header_idx: int,
-        column_map: dict,
+        column_map: dict[str, Any],
     ) -> list[LineItem]:
         """Parse items from lines after header."""
         items = []
@@ -425,9 +426,9 @@ class TableAwareParser(IInvoiceParser):
 
         return items
 
-    def _extract_row_data(self, cells: list[dict], column_map: dict) -> dict:
+    def _extract_row_data(self, cells: list[dict[str, Any]], column_map: dict[str, Any]) -> dict[str, Any]:
         """Extract data from row cells using column map."""
-        data = {}
+        data: dict[str, Any] = {}
         used_cells = set()
 
         for col_type, col_info in column_map.items():

@@ -83,9 +83,13 @@ class ChatWithContextUseCase:
             session = await chat.get_session(response.session_id)
 
         context_chunks = 0
-        if response.context_used:
+        context_used = getattr(response, "context_used", None)
+        if context_used:
             # Count context chunks used
-            context_chunks = response.context_used.count("[")
+            context_chunks = context_used.count("[")
+
+        # session should be resolved by now; assert for type narrowing
+        assert session is not None
 
         logger.info(
             "chat_complete",
@@ -155,7 +159,7 @@ class ChatWithContextUseCase:
         return ChatResponse(
             session_id=result.session.session_id,
             message=ChatMessageResponse(
-                id=result.message.id,
+                id=str(result.message.id) if result.message.id is not None else "0",
                 role=result.message.role.value,
                 content=result.message.content,
                 created_at=result.message.created_at,

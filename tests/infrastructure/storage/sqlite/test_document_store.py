@@ -1,6 +1,5 @@
 """Unit tests for SQLiteDocumentStore."""
 
-from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -201,7 +200,7 @@ class TestSQLiteDocumentStoreUpdateDocument:
             created.page_count = 5
             created.company_key = "NEW_COMPANY"
 
-            updated = await store.update_document(created)
+            await store.update_document(created)
 
             # Verify
             result = await store.get_document(created.id)
@@ -705,7 +704,7 @@ class TestSQLiteDocumentStoreChunkOperations:
                 )
                 for i in range(10)
             ]
-            created = await store.create_chunks(chunks)
+            await store.create_chunks(chunks)
 
             # Get first batch
             first_batch = await store.get_chunks_for_indexing(last_chunk_id=0, limit=5)

@@ -4,6 +4,8 @@ Hybrid search combining FAISS vector search with FTS5 keyword search.
 Uses Reciprocal Rank Fusion (RRF) to merge results from both sources.
 """
 
+from typing import Any
+
 from src.config import get_logger, get_settings
 from src.core.entities import SearchResult
 from src.infrastructure.embeddings import get_embedding_provider
@@ -86,7 +88,7 @@ class HybridSearcher:
     4. Optional reranking
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.settings = get_settings()
 
     async def search_chunks(
@@ -173,7 +175,7 @@ class HybridSearcher:
         top_k: int = 20,
         use_hybrid: bool = True,
         use_reranker: bool = False,
-        filters: dict | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
         """
         Search invoice items with hybrid approach.
@@ -252,7 +254,7 @@ class HybridSearcher:
         top_k: int = 10,
         search_type: str = "hybrid",
         use_reranker: bool = True,
-        filters: dict | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
         """
         Universal search method that routes to appropriate searcher.

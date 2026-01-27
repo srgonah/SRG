@@ -6,11 +6,12 @@ Provides resilience patterns for all LLM implementations.
 
 import time
 from abc import ABC
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from tenacity import (
+    RetryCallState,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
@@ -97,7 +98,7 @@ class BaseLLMProvider(ILLMProvider, ABC):
     - Health check caching
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         settings = get_settings()
         self.circuit_breaker = CircuitBreakerState(
             failure_threshold=settings.llm.failure_threshold,
@@ -107,7 +108,7 @@ class BaseLLMProvider(ILLMProvider, ABC):
         self._health_cache_time: float = 0.0
         self._health_cache_ttl: float = 30.0  # Cache health for 30s
 
-    def _get_retry_decorator(self):
+    def _get_retry_decorator(self) -> Any:
         """Get tenacity retry decorator with current settings."""
         settings = get_settings()
         return retry(
@@ -118,16 +119,21 @@ class BaseLLMProvider(ILLMProvider, ABC):
                 max=settings.llm.retry_delay * (settings.llm.retry_multiplier**3),
             ),
             retry=retry_if_exception_type((TimeoutError, ConnectionError)),
-            before_sleep=lambda retry_state: logger.warning(
-                "llm_retry",
-                attempt=retry_state.attempt_number,
-                error=str(retry_state.outcome.exception()) if retry_state.outcome else None,
-            ),
+            before_sleep=self._log_retry,
+        )
+
+    @staticmethod
+    def _log_retry(retry_state: RetryCallState) -> None:
+        """Log retry attempts."""
+        logger.warning(
+            "llm_retry",
+            attempt=retry_state.attempt_number,
+            error=str(retry_state.outcome.exception()) if retry_state.outcome else None,
         )
 
     async def _with_resilience(
         self,
-        operation: Callable[..., T],
+        operation: Callable[..., Awaitable[T]],
         *args: Any,
         **kwargs: Any,
     ) -> T:
@@ -157,7 +163,7 @@ class BaseLLMProvider(ILLMProvider, ABC):
 
             # Success - reset circuit
             self.circuit_breaker.record_success()
-            return result
+            return cast(T, result)
 
         except TimeoutError:
             self.circuit_breaker.record_failure()

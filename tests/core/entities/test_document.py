@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-import pytest
-
 from src.core.entities.document import (
     Chunk,
     Document,

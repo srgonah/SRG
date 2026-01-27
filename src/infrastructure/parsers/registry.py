@@ -5,11 +5,12 @@ Manages multiple parsers and routes parsing to the best available strategy.
 Uses a deterministic parsing chain: Template (100) → Table-aware (80) → Vision (60).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
-from src.config import get_logger, get_settings
+from src.config import get_logger
 from src.core.interfaces import IInvoiceParser, IParserRegistry, ParserResult
-from src.infrastructure.parsers.base import EnhancedParserResult, ParserTiming
+from src.infrastructure.parsers.base import ParserTiming
 from src.infrastructure.parsers.table_aware_parser import get_table_aware_parser
 from src.infrastructure.parsers.template_parser import get_template_parser
 from src.infrastructure.parsers.vision_parser import get_vision_parser
@@ -115,7 +116,7 @@ class ParserRegistry(IParserRegistry):
         self,
         text: str,
         filename: str,
-        hints: dict | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> ParserResult:
         """
         Parse using the best available parser.
@@ -151,7 +152,7 @@ class ParserRegistry(IParserRegistry):
 
         # Try each parser in priority order
         for parser in self._parsers:
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now(UTC)
 
             # Check if parser can handle this content
             can_parse_confidence = parser.can_parse(text, hints)
@@ -175,7 +176,7 @@ class ParserRegistry(IParserRegistry):
 
             try:
                 result = await parser.parse(text, filename, hints)
-                end_time = datetime.now(timezone.utc)
+                end_time = datetime.now(UTC)
                 duration_ms = (end_time - start_time).total_seconds() * 1000
 
                 # Record timing
@@ -246,7 +247,7 @@ class ParserRegistry(IParserRegistry):
                         errors.append(f"{parser.name}: {result.error}")
 
             except Exception as e:
-                end_time = datetime.now(timezone.utc)
+                end_time = datetime.now(UTC)
                 duration_ms = (end_time - start_time).total_seconds() * 1000
 
                 timings.append(
@@ -323,7 +324,7 @@ class ParserRegistry(IParserRegistry):
         parser_name: str,
         text: str,
         filename: str,
-        hints: dict | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> ParserResult:
         """
         Parse using a specific parser by name.

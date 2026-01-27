@@ -1,17 +1,14 @@
 """Pytest fixtures for SQLite storage tests."""
 
-import asyncio
-import tempfile
-from datetime import datetime, timezone
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import aiosqlite
 import pytest
 
 from src.core.entities import (
-    ArithmeticCheck,
     ArithmeticCheckContainer,
     AuditIssue,
     AuditResult,
@@ -283,7 +280,7 @@ async def initialized_db(temp_db_path: Path) -> AsyncGenerator[Path, None]:
 @pytest.fixture
 def sample_document() -> Document:
     """Create a sample document for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Document(
         filename="test_invoice.pdf",
         original_filename="test_invoice.pdf",
@@ -305,7 +302,7 @@ def sample_document() -> Document:
 @pytest.fixture
 def sample_page() -> Page:
     """Create a sample page for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Page(
         doc_id=1,
         page_no=1,
@@ -323,7 +320,7 @@ def sample_page() -> Page:
 @pytest.fixture
 def sample_chunk() -> Chunk:
     """Create a sample chunk for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Chunk(
         doc_id=1,
         page_id=1,
@@ -340,7 +337,7 @@ def sample_chunk() -> Chunk:
 @pytest.fixture
 def sample_invoice() -> Invoice:
     """Create a sample invoice for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Invoice(
         doc_id=1,
         invoice_no="INV-2024-001",
@@ -396,7 +393,7 @@ def sample_invoice() -> Invoice:
 @pytest.fixture
 def sample_audit_result() -> AuditResult:
     """Create a sample audit result for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return AuditResult(
         invoice_id=1,
         trace_id="trace-123",
@@ -437,7 +434,7 @@ def sample_audit_result() -> AuditResult:
 @pytest.fixture
 def sample_session() -> ChatSession:
     """Create a sample chat session for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return ChatSession(
         session_id="sess-12345",
         title="Invoice Review Session",
@@ -459,7 +456,7 @@ def sample_session() -> ChatSession:
 @pytest.fixture
 def sample_message() -> Message:
     """Create a sample message for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return Message(
         session_id="sess-12345",
         role=MessageRole.USER,
@@ -477,7 +474,7 @@ def sample_message() -> Message:
 @pytest.fixture
 def sample_memory_fact() -> MemoryFact:
     """Create a sample memory fact for testing."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     return MemoryFact(
         session_id="sess-12345",
         fact_type=MemoryFactType.USER_PREFERENCE,

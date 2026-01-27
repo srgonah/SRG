@@ -8,6 +8,7 @@ confidence scoring, and line filtering.
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from typing import Any
 from datetime import datetime
 from typing import Any
 
@@ -240,7 +241,7 @@ def extract_table_block(text: str) -> str:
     return "\n".join(lines[start_idx:end_idx])
 
 
-def split_cells_by_whitespace(line: str, min_gap: int = 2) -> list[dict]:
+def split_cells_by_whitespace(line: str, min_gap: int = 2) -> list[dict[str, Any]]:
     """
     Split a line into cells based on whitespace gaps.
 

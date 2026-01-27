@@ -8,9 +8,9 @@ Tests:
 - Search type routing
 """
 
-import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.core.entities import SearchResult
 from src.infrastructure.search.hybrid import HybridSearcher, reciprocal_rank_fusion

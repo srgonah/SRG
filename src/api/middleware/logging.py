@@ -4,7 +4,7 @@ Logging middleware for request/response tracking.
 
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -25,7 +25,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self,
         request: Request,
-        call_next: Callable,
+        call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         """Process request with logging."""
         # Generate request ID

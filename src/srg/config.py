@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     def parse_origins(cls, v: Any) -> list[str]:
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
-        return v
+        return list(v)
 
 
 @lru_cache

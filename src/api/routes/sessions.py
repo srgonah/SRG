@@ -2,6 +2,8 @@
 Chat session management endpoints.
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api.dependencies import get_chat_use_case, get_sess_store
@@ -13,6 +15,7 @@ from src.application.dto.responses import (
     SessionResponse,
 )
 from src.application.use_cases import ChatWithContextUseCase
+from src.infrastructure.storage.sqlite import SQLiteSessionStore
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -25,7 +28,7 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 async def create_session(
     request: CreateSessionRequest,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> SessionResponse:
     """Create a new chat session."""
     session = await use_case.create_session(request)
     return use_case.session_to_response(session)
@@ -39,7 +42,7 @@ async def list_sessions(
     limit: int = 20,
     offset: int = 0,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> SessionListResponse:
     """List recent chat sessions."""
     sessions = await use_case.list_sessions(limit=limit, offset=offset)
     return use_case.sessions_to_response(sessions)
@@ -55,7 +58,7 @@ async def list_sessions(
 async def get_session(
     session_id: str,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> SessionResponse:
     """Get session by ID."""
     session = await use_case.get_session(session_id)
 
@@ -75,7 +78,7 @@ async def get_session(
 async def delete_session(
     session_id: str,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> None:
     """Delete a chat session."""
     result = await use_case.delete_session(session_id)
 
@@ -93,18 +96,18 @@ async def delete_session(
 async def get_session_messages(
     session_id: str,
     limit: int = 50,
-    store=Depends(get_sess_store),
-):
+    store: SQLiteSessionStore = Depends(get_sess_store),
+) -> list[ChatMessageResponse]:
     """Get messages for a session."""
     messages = await store.get_messages(session_id, limit=limit)
 
     return [
         ChatMessageResponse(
-            id=msg.id,
+            id=str(msg.id or 0),
             role=msg.role.value,
             content=msg.content,
             created_at=msg.created_at,
-            context_used=msg.context_used,
+            context_used=msg.metadata.get("context_used"),
         )
         for msg in messages
     ]
@@ -116,7 +119,7 @@ async def get_session_messages(
 async def get_session_summary(
     session_id: str,
     use_case: ChatWithContextUseCase = Depends(get_chat_use_case),
-):
+) -> dict[str, Any]:
     """Generate a summary of the session."""
     summary = await use_case.get_session_summary(session_id)
     return {"session_id": session_id, "summary": summary}

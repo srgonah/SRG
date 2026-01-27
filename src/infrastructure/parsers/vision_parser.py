@@ -15,7 +15,7 @@ from src.config import get_logger, get_settings
 from src.core.entities import Invoice, LineItem, RowType
 from src.core.interfaces import IInvoiceParser, ParserResult
 from src.infrastructure.llm import get_vision_provider
-from src.infrastructure.parsers.base import clean_item_name, parse_date, parse_number
+from src.infrastructure.parsers.base import clean_item_name, parse_date
 
 logger = get_logger(__name__)
 
@@ -163,7 +163,7 @@ class VisionParser(IInvoiceParser):
     def priority(self) -> int:
         return 60  # Lower priority - used as fallback
 
-    def can_parse(self, text: str, hints: dict | None = None) -> float:
+    def can_parse(self, text: str, hints: dict[str, Any] | None = None) -> float:
         """
         Check if vision parsing should be attempted.
 
@@ -209,7 +209,7 @@ class VisionParser(IInvoiceParser):
         self,
         text: str,
         filename: str,
-        hints: dict | None = None,
+        hints: dict[str, Any] | None = None,
     ) -> ParserResult:
         """Parse invoice using vision model."""
         hints = hints or {}
@@ -363,7 +363,7 @@ class VisionParser(IInvoiceParser):
 
         return Invoice(
             invoice_no=data.invoice_no,
-            invoice_date=parsed_date or data.invoice_date,
+            invoice_date=parsed_date or data.invoice_date,  # type: ignore[arg-type]
             seller_name=data.seller_name,
             buyer_name=data.buyer_name,
             currency=data.currency,

@@ -10,12 +10,11 @@ Tests:
 - Chunk creation and text splitting
 """
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.core.entities.document import Chunk, Document, DocumentStatus, IndexingState, Page, PageType
+from src.core.entities.document import Chunk, Document, IndexingState, Page, PageType
 from src.core.exceptions import IndexingError
 from src.core.services.document_indexer import DocumentIndexerService
 
@@ -105,7 +104,7 @@ class MockEmbeddingProvider:
         self.dimension = dimension
         self.calls = []
 
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         self.calls.append(texts)
         # Return fake embeddings
         return [[0.1] * self.dimension for _ in texts]
@@ -257,7 +256,7 @@ class TestIndexPending:
         ]
         doc_store.chunks[1] = chunks
 
-        result = await service.index_pending()
+        await service.index_pending()
 
         # Check state was updated
         state = await state_store.get_state("chunks")
@@ -431,7 +430,7 @@ class TestErrorHandling:
         state_store = MockIndexingStateStore()
 
         # Make embedder fail
-        embedder.embed_batch = AsyncMock(side_effect=Exception("Embedding failed"))
+        embedder.embed_batch = MagicMock(side_effect=Exception("Embedding failed"))
 
         service = DocumentIndexerService(
             document_store=doc_store,
@@ -468,7 +467,7 @@ class TestErrorHandling:
         ]
 
         # Make embedder fail
-        embedder.embed_batch = AsyncMock(side_effect=Exception("Embedding failed"))
+        embedder.embed_batch = MagicMock(side_effect=Exception("Embedding failed"))
 
         service = DocumentIndexerService(
             document_store=doc_store,

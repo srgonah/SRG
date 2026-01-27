@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import aiosqlite
 import pytest
@@ -179,7 +179,7 @@ class TestConnectionPoolAcquire:
 
         assert pool._pool.qsize() == 1
 
-        async with pool.acquire() as conn:
+        async with pool.acquire() as _conn:
             assert pool._pool.qsize() == 0
 
         assert pool._pool.qsize() == 1
@@ -192,7 +192,7 @@ class TestConnectionPoolAcquire:
         await pool.initialize()
 
         with pytest.raises(ValueError):
-            async with pool.acquire() as conn:
+            async with pool.acquire() as _conn:
                 raise ValueError("Test error")
 
         assert pool._pool.qsize() == 1
@@ -205,11 +205,11 @@ class TestConnectionPoolAcquire:
         await pool.initialize()
 
         # Hold the only connection
-        async with pool.acquire() as conn1:
+        async with pool.acquire() as _conn1:
             # Try to acquire another (should timeout)
             with pytest.raises(asyncio.TimeoutError):
                 async with asyncio.timeout(0.1):
-                    async with pool.acquire() as conn2:
+                    async with pool.acquire() as _conn2:
                         pass
 
         await pool.close()

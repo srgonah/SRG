@@ -16,7 +16,7 @@ _start_time = time.time()
 
 
 @router.get("", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """
     Basic health check.
 
@@ -30,7 +30,7 @@ async def health_check():
 
 
 @router.get("/llm", response_model=HealthResponse)
-async def llm_health():
+async def llm_health() -> HealthResponse:
     """
     LLM provider health check.
 
@@ -46,12 +46,12 @@ async def llm_health():
         start = time.time()
 
         # Simple health check
-        is_healthy = await llm.health_check()
+        health_result = await llm.check_health()
         latency = (time.time() - start) * 1000
 
         llm_status = ProviderHealthResponse(
             name=llm.__class__.__name__,
-            available=is_healthy,
+            available=health_result.available,
             latency_ms=latency,
         )
 
@@ -71,7 +71,7 @@ async def llm_health():
 
 
 @router.get("/db", response_model=HealthResponse)
-async def db_health():
+async def db_health() -> HealthResponse:
     """
     Database health check.
 
@@ -87,7 +87,7 @@ async def db_health():
     try:
         pool = await get_connection_pool()
         start = time.time()
-        async with pool.connection() as conn:
+        async with pool.acquire() as conn:
             await conn.execute("SELECT 1")
         latency = (time.time() - start) * 1000
 
@@ -113,7 +113,7 @@ async def db_health():
 
 
 @router.get("/search", response_model=HealthResponse)
-async def search_health():
+async def search_health() -> HealthResponse:
     """
     Search system health check.
 
@@ -154,7 +154,7 @@ async def search_health():
 
 
 @router.get("/full", response_model=HealthResponse)
-async def full_health_check():
+async def full_health_check() -> HealthResponse:
     """
     Full system health check.
 
@@ -164,29 +164,29 @@ async def full_health_check():
     from src.infrastructure.storage.sqlite import get_connection_pool
     from src.infrastructure.storage.vector import get_faiss_store
 
-    status = "healthy"
+    status_str = "healthy"
 
     # LLM check
     llm_status = ProviderHealthResponse(name="llm", available=False)
     try:
         llm = get_llm()
         start = time.time()
-        is_healthy = await llm.health_check()
+        health_result = await llm.check_health()
         llm_status = ProviderHealthResponse(
             name=llm.__class__.__name__,
-            available=is_healthy,
+            available=health_result.available,
             latency_ms=(time.time() - start) * 1000,
         )
     except Exception as e:
         llm_status.error = str(e)
-        status = "degraded"
+        status_str = "degraded"
 
     # Embedding check
     embed_status = ProviderHealthResponse(name="embedding", available=False)
     try:
         embedder = get_embedding_provider()
         start = time.time()
-        _ = await embedder.embed("test")
+        _ = embedder.embed_single("test")
         embed_status = ProviderHealthResponse(
             name=embedder.__class__.__name__,
             available=True,
@@ -194,14 +194,14 @@ async def full_health_check():
         )
     except Exception as e:
         embed_status.error = str(e)
-        status = "degraded"
+        status_str = "degraded"
 
     # Database check
     db_status = ProviderHealthResponse(name="sqlite", available=False)
     try:
         pool = await get_connection_pool()
         start = time.time()
-        async with pool.connection() as conn:
+        async with pool.acquire() as conn:
             await conn.execute("SELECT 1")
         db_status = ProviderHealthResponse(
             name="sqlite",
@@ -210,7 +210,7 @@ async def full_health_check():
         )
     except Exception as e:
         db_status.error = str(e)
-        status = "unhealthy"
+        status_str = "unhealthy"
 
     # Vector store check
     vec_status = ProviderHealthResponse(name="faiss", available=False)
@@ -225,10 +225,10 @@ async def full_health_check():
         )
     except Exception as e:
         vec_status.error = str(e)
-        status = "degraded"
+        status_str = "degraded"
 
     return HealthResponse(
-        status=status,
+        status=status_str,
         version="1.0.0",
         uptime_seconds=time.time() - _start_time,
         llm=llm_status,
@@ -239,7 +239,7 @@ async def full_health_check():
 
 
 @router.get("/detailed", response_model=HealthResponse)
-async def detailed_health_check():
+async def detailed_health_check() -> HealthResponse:
     """
     Detailed system health check (alias for /full).
 

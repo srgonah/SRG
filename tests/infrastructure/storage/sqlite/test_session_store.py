@@ -1,6 +1,5 @@
 """Unit tests for SQLiteSessionStore."""
 
-from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest

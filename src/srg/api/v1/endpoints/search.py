@@ -1,8 +1,11 @@
 """Search endpoints."""
 
+from typing import Any
+
 from fastapi import APIRouter
 
 from src.application.dto.requests import SearchRequest as SearchRequestDTO
+from src.application.dto.responses import SearchResponse as SearchResponseDTO
 from src.application.use_cases import SearchDocumentsUseCase
 from src.srg.schemas.search import SearchRequest, SearchResponse
 
@@ -10,7 +13,7 @@ router = APIRouter()
 
 
 @router.post("", response_model=SearchResponse)
-async def search_documents(request: SearchRequest):
+async def search_documents(request: SearchRequest) -> SearchResponseDTO:
     """Search indexed documents using hybrid search."""
     use_case = SearchDocumentsUseCase()
     dto = SearchRequestDTO(
@@ -26,7 +29,7 @@ async def search_documents(request: SearchRequest):
 
 
 @router.get("/quick", response_model=SearchResponse)
-async def quick_search(q: str, top_k: int = 5):
+async def quick_search(q: str, top_k: int = 5) -> SearchResponseDTO:
     """Quick search with GET request."""
     use_case = SearchDocumentsUseCase()
     dto = SearchRequestDTO(
@@ -41,14 +44,14 @@ async def quick_search(q: str, top_k: int = 5):
 
 
 @router.get("/cache/stats")
-async def get_cache_stats():
+async def get_cache_stats() -> dict[str, Any]:
     """Get search cache statistics."""
     use_case = SearchDocumentsUseCase()
     return use_case.get_cache_stats()
 
 
 @router.post("/cache/invalidate")
-async def invalidate_cache():
+async def invalidate_cache() -> dict[str, str]:
     """Clear search cache."""
     use_case = SearchDocumentsUseCase()
     use_case.invalidate_cache()

@@ -8,6 +8,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 from src.config import get_logger, get_settings
 from src.core.exceptions import LLMUnavailableError
@@ -23,7 +24,7 @@ try:
     LLAMA_CPP_AVAILABLE = True
 except ImportError:
     LLAMA_CPP_AVAILABLE = False
-    Llama = None
+    Llama = None  # type: ignore[misc, assignment]
 
 
 class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
@@ -46,7 +47,7 @@ class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
         self.max_tokens = settings.llm.max_tokens
         self.temperature = settings.llm.temperature
 
-        self._model: Llama | None = None
+        self._model: Any = None
         self._model_loaded = False
 
     def _load_model(self) -> None:
@@ -78,8 +79,8 @@ class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
         self,
         prompt: str,
         system_prompt: str | None = None,
-        temperature: float = None,
-        max_tokens: int = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         stop: list[str] | None = None,
     ) -> LLMResponse:
         """Generate text completion."""
@@ -90,7 +91,7 @@ class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
 
-        async def _do_generate():
+        async def _do_generate() -> LLMResponse:
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
@@ -113,6 +114,7 @@ class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
     ) -> LLMResponse:
         """Synchronous generation (runs in thread pool)."""
         self._load_model()
+        assert self._model is not None
 
         start_time = time.time()
 
@@ -150,8 +152,8 @@ class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
         self,
         prompt: str,
         system_prompt: str | None = None,
-        temperature: float = None,
-        max_tokens: int = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncIterator[str]:
         """Generate text with streaming output."""
         temperature = temperature if temperature is not None else self.temperature
@@ -162,12 +164,13 @@ class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
             full_prompt = f"{system_prompt}\n\n{prompt}"
 
         self._load_model()
+        assert self._model is not None
 
         # Run streaming in thread pool
         loop = asyncio.get_event_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
-        def _stream_sync():
+        def _stream_sync() -> None:
             for output in self._model(
                 full_prompt,
                 max_tokens=max_tokens,
@@ -192,8 +195,8 @@ class LlamaCppProvider(BaseLLMProvider, ILLMProvider):
     async def chat(
         self,
         messages: list[dict[str, str]],
-        temperature: float = None,
-        max_tokens: int = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Chat completion with message history."""
         # Convert messages to prompt format

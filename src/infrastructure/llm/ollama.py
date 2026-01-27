@@ -8,6 +8,7 @@ import base64
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 
@@ -36,7 +37,7 @@ class OllamaProvider(BaseLLMProvider, ILLMProvider, IVisionProvider):
     Supports text generation, chat, and vision capabilities.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         settings = get_settings()
         self.host = settings.llm.host
@@ -49,9 +50,9 @@ class OllamaProvider(BaseLLMProvider, ILLMProvider, IVisionProvider):
     async def _make_request(
         self,
         endpoint: str,
-        payload: dict,
+        payload: dict[str, Any],
         timeout: int | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Make HTTP request to Ollama API."""
         url = f"{self.host}/{endpoint}"
         timeout = timeout or self.timeout
@@ -67,37 +68,39 @@ class OllamaProvider(BaseLLMProvider, ILLMProvider, IVisionProvider):
                 error_text = response.text[:200]
                 raise LLMUnavailableError("ollama", f"HTTP {response.status_code}: {error_text}")
 
-            return response.json()
+            return cast(dict[str, Any], response.json())
 
     async def generate(
         self,
         prompt: str,
         system_prompt: str | None = None,
-        temperature: float = None,
-        max_tokens: int = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         stop: list[str] | None = None,
     ) -> LLMResponse:
         """Generate text completion."""
         temperature = temperature if temperature is not None else self.temperature
         max_tokens = max_tokens or self.max_tokens
 
-        payload = {
+        options: dict[str, Any] = {
+            "temperature": temperature,
+            "num_predict": max_tokens,
+        }
+
+        if stop:
+            options["stop"] = stop
+
+        payload: dict[str, Any] = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
+            "options": options,
         }
 
         if system_prompt:
             payload["system"] = system_prompt
 
-        if stop:
-            payload["options"]["stop"] = stop
-
-        async def _do_generate():
+        async def _do_generate() -> LLMResponse:
             start_time = time.time()
             result = await self._make_request("api/generate", payload)
             elapsed = time.time() - start_time
@@ -130,8 +133,8 @@ class OllamaProvider(BaseLLMProvider, ILLMProvider, IVisionProvider):
         self,
         prompt: str,
         system_prompt: str | None = None,
-        temperature: float = None,
-        max_tokens: int = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncIterator[str]:
         """Generate text with streaming output."""
         temperature = temperature if temperature is not None else self.temperature
@@ -171,15 +174,15 @@ class OllamaProvider(BaseLLMProvider, ILLMProvider, IVisionProvider):
     async def chat(
         self,
         messages: list[dict[str, str]],
-        temperature: float = None,
-        max_tokens: int = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Chat completion with message history."""
         temperature = temperature if temperature is not None else self.temperature
         max_tokens = max_tokens or self.max_tokens
 
         # Convert to Ollama chat format
-        ollama_messages = []
+        ollama_messages: list[dict[str, str]] = []
         for msg in messages:
             ollama_messages.append(
                 {
@@ -198,7 +201,7 @@ class OllamaProvider(BaseLLMProvider, ILLMProvider, IVisionProvider):
             },
         }
 
-        async def _do_chat():
+        async def _do_chat() -> LLMResponse:
             start_time = time.time()
             result = await self._make_request("api/chat", payload)
             elapsed = time.time() - start_time
@@ -325,7 +328,7 @@ class OllamaProvider(BaseLLMProvider, ILLMProvider, IVisionProvider):
             },
         }
 
-        async def _do_vision():
+        async def _do_vision() -> VisionResponse:
             start_time = time.time()
             result = await self._make_request("api/generate", payload, timeout=180)
             elapsed = time.time() - start_time

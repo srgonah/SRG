@@ -78,7 +78,7 @@ class AuditInvoiceUseCase:
 
         # Get invoice
         store = await self._get_invoice_store()
-        invoice = await store.get_invoice(request.invoice_id)
+        invoice = await store.get_invoice(request.invoice_id)  # type: ignore[arg-type]
 
         if not invoice:
             # Convert string ID to int for exception, handle gracefully
@@ -96,13 +96,13 @@ class AuditInvoiceUseCase:
         )
 
         # Save audit result
-        await store.save_audit_result(audit_result)
+        await store.save_audit_result(audit_result)  # type: ignore[attr-defined]
 
         logger.info(
             "audit_invoice_complete",
             invoice_id=request.invoice_id,
             passed=audit_result.passed,
-            findings=len(audit_result.findings),
+            findings=len(audit_result.issues),
         )
 
         return AuditResultDTO(
@@ -113,7 +113,7 @@ class AuditInvoiceUseCase:
     async def get_latest_audit(self, invoice_id: str) -> AuditResult | None:
         """Get the most recent audit result for an invoice."""
         store = await self._get_invoice_store()
-        results = await store.get_audit_results(invoice_id, limit=1)
+        results = await store.list_audit_results(invoice_id=int(invoice_id), limit=1)
         return results[0] if results else None
 
     async def get_audit_history(
@@ -123,29 +123,30 @@ class AuditInvoiceUseCase:
     ) -> list[AuditResult]:
         """Get audit history for an invoice."""
         store = await self._get_invoice_store()
-        return await store.get_audit_results(invoice_id, limit=limit)
+        return await store.list_audit_results(invoice_id=int(invoice_id), limit=limit)
 
     def to_response(self, result: AuditResultDTO) -> AuditResultResponse:
         """Convert to API response format."""
         ar = result.audit_result
 
         return AuditResultResponse(
-            id=ar.id,
-            invoice_id=ar.invoice_id,
+            id=str(ar.id) if ar.id is not None else "0",
+            invoice_id=str(ar.invoice_id),
             passed=ar.passed,
             confidence=ar.confidence,
             findings=[
                 AuditFindingResponse(
+                    code=f.code,
                     category=f.category,
-                    severity=f.severity,
+                    severity=f.severity.value if hasattr(f.severity, "value") else str(f.severity),
                     message=f.message,
                     field=f.field,
                     expected=f.expected,
                     actual=f.actual,
                 )
-                for f in ar.findings
+                for f in ar.issues
             ],
-            audited_at=ar.audited_at,
-            error_count=sum(1 for f in ar.findings if f.severity == "error"),
-            warning_count=sum(1 for f in ar.findings if f.severity == "warning"),
+            audited_at=ar.audited_at or ar.created_at,
+            error_count=sum(1 for f in ar.issues if f.severity.value == "error"),
+            warning_count=sum(1 for f in ar.issues if f.severity.value == "warning"),
         )

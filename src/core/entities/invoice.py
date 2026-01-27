@@ -287,9 +287,9 @@ ArithmeticCheckItem = ArithmeticCheck
 class ArithmeticCheckContainer(BaseModel):
     """Container for all arithmetic verification results (legacy format)."""
 
-    line_checks: list[dict] = Field(default_factory=list)
-    total_quantity: dict = Field(default_factory=dict)
-    grand_total: dict = Field(default_factory=dict)
+    line_checks: list[dict[str, Any]] = Field(default_factory=list)
+    total_quantity: dict[str, Any] = Field(default_factory=dict)
+    grand_total: dict[str, Any] = Field(default_factory=dict)
     overall_status: str = "PASS"
     checks: list[ArithmeticCheck] = Field(default_factory=list)
 
@@ -313,7 +313,7 @@ class AuditResult(BaseModel):
     filename: str = ""
 
     # Audit metadata (llm_used, rule counts, etc.)
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     # Arithmetic checks (new structured format)
     arithmetic_checks: list[ArithmeticCheck] = Field(default_factory=list)
@@ -322,31 +322,31 @@ class AuditResult(BaseModel):
     audited_at: datetime | None = None
 
     # Section 1: Document Intake
-    document_intake: dict = Field(default_factory=dict)
+    document_intake: dict[str, Any] = Field(default_factory=dict)
 
     # Section 2: Proforma Summary
-    proforma_summary: dict = Field(default_factory=dict)
+    proforma_summary: dict[str, Any] = Field(default_factory=dict)
 
     # Section 3: Items Table (enriched)
-    items_table: list[dict] = Field(default_factory=list)
+    items_table: list[dict[str, Any]] = Field(default_factory=list)
 
     # Section 4: Arithmetic Check (legacy container format)
     arithmetic_check: ArithmeticCheckContainer = Field(default_factory=ArithmeticCheckContainer)
 
     # Section 5: Amount in Words Check
-    amount_words_check: dict = Field(default_factory=dict)
+    amount_words_check: dict[str, Any] = Field(default_factory=dict)
 
     # Section 6: Bank Details Check
-    bank_details_check: dict = Field(default_factory=dict)
+    bank_details_check: dict[str, Any] = Field(default_factory=dict)
 
     # Section 7: Commercial Terms Suggestions
-    commercial_terms_suggestions: list[dict] = Field(default_factory=list)
+    commercial_terms_suggestions: list[dict[str, Any]] = Field(default_factory=list)
 
     # Section 8: Contract Summary
-    contract_summary: dict = Field(default_factory=dict)
+    contract_summary: dict[str, Any] = Field(default_factory=dict)
 
     # Section 9: Final Verdict
-    final_verdict: dict = Field(default_factory=dict)
+    final_verdict: dict[str, Any] = Field(default_factory=dict)
 
     # Issues list
     issues: list[AuditIssue] = Field(default_factory=list)
@@ -368,6 +368,6 @@ class AuditResult(BaseModel):
     def warnings_count(self) -> int:
         return sum(1 for i in self.issues if i.level == "warning")
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON response."""
         return self.model_dump(mode="json")
