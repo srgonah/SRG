@@ -195,6 +195,24 @@ async def root_health():
     }
 
 
+# SPA catch-all: serve index.html for non-API paths so React Router works
+# Registered last — API routes, /docs, /health, and /static mount all take priority.
+@app.get("/{path:path}")
+async def spa_catch_all(path: str):
+    """Serve SPA index.html for client-side routes."""
+    from fastapi.responses import JSONResponse
+
+    # API paths that don't match a real route should 404, not serve the SPA
+    if path.startswith("api/"):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    static_dir = Path(__file__).parent.parent.parent / "static"
+    index_file = static_dir / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    return {"detail": "Not Found"}
+
+
 if __name__ == "__main__":
     import uvicorn
 
