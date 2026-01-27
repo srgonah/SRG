@@ -58,7 +58,23 @@ uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 
 The API will be available at `http://localhost:8000` with interactive docs at `/docs`.
 
-### Dashboard
+### Unified Serving (Recommended)
+
+Use `manage.py` to build the dashboard and serve everything from one host:
+
+```bash
+python manage.py start          # Build dashboard + start on :8000
+python manage.py start --port 9000 --skip-build
+python manage.py stop            # Graceful shutdown
+python manage.py restart         # Stop + start
+python manage.py status          # Check if running
+python manage.py build           # Build dashboard only
+python manage.py dev             # Backend (reload) + Vite dev server
+```
+
+Visit `http://localhost:8000` for the dashboard and API.
+
+### Dashboard (standalone dev server)
 
 ```bash
 cd dashboard
@@ -66,7 +82,7 @@ npm install
 npm run dev
 ```
 
-The dashboard will be available at `http://localhost:3001`.
+The dashboard dev server will be available at `http://localhost:3000` (proxies API to `:8000`).
 
 ### Configuration
 

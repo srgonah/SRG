@@ -87,3 +87,6 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Server PID
+.srg.pid
