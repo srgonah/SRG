@@ -7,7 +7,6 @@ Creates and configures the main application instance.
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -202,7 +201,6 @@ async def root_health() -> dict[str, str]:
 @app.get("/{path:path}", response_model=None)
 async def spa_catch_all(path: str) -> Response | dict[str, str]:
     """Serve SPA index.html for client-side routes."""
-    from fastapi.responses import JSONResponse
 
     # API paths that don't match a real route should 404, not serve the SPA
     if path.startswith("api/"):

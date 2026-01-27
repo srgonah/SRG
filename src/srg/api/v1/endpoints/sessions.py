@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, status
 from src.application.dto.requests import CreateSessionRequest as CreateSessionDTO
 from src.application.dto.responses import (
     SessionListResponse as SessionListDTO,
+)
+from src.application.dto.responses import (
     SessionResponse as SessionDTO,
 )
 from src.application.use_cases import ChatWithContextUseCase

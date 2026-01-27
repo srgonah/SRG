@@ -20,6 +20,7 @@ from src.application.use_cases import (
     UploadInvoiceUseCase,
 )
 from src.config import Settings, get_settings
+from src.core.interfaces import ILLMProvider
 from src.core.services import (
     ChatService,
     DocumentIndexerService,
@@ -27,7 +28,6 @@ from src.core.services import (
     InvoiceParserService,
     SearchService,
 )
-from src.core.interfaces import ILLMProvider
 from src.infrastructure.llm import get_llm_provider
 from src.infrastructure.storage.sqlite import (
     SQLiteDocumentStore,

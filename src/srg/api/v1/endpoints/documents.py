@@ -2,7 +2,6 @@
 
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
