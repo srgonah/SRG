@@ -1,29 +1,21 @@
 """
 Search service for RAG orchestration.
 
-Coordinates hybrid search, reranking, and context preparation.
+Layer-pure service coordinating hybrid search, reranking, and context preparation.
+NO infrastructure imports - depends only on core entities, interfaces, exceptions.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
-from src.config import get_logger, get_settings
 from src.core.entities.document import SearchResult
 from src.core.exceptions import SearchError
-from src.infrastructure.cache import SearchCache, get_search_cache
-from src.infrastructure.search import (
-    HybridSearcher,
-    Reranker,
-    get_hybrid_searcher,
-    get_reranker,
-    is_reranker_enabled,
-)
-
-logger = get_logger(__name__)
+from src.core.interfaces import IHybridSearcher, IReranker, ISearchCache
 
 
 @dataclass
 class SearchContext:
-    """Context prepared for RAG."""
+    """Context prepared for RAG consumption."""
 
     query: str
     results: list[SearchResult]
@@ -36,46 +28,32 @@ class SearchService:
     """
     RAG-oriented search service.
 
-    Combines hybrid search with reranking and
-    prepares context for LLM consumption.
+    Combines hybrid search with optional reranking and caching.
+    Prepares context for LLM consumption.
+
+    Required interfaces for DI:
+    - IHybridSearcher: Hybrid search implementation
+    - IReranker: Optional result reranking
+    - ISearchCache: Optional result caching
     """
 
     def __init__(
         self,
-        searcher: HybridSearcher | None = None,
-        reranker: Reranker | None = None,
-        cache: SearchCache | None = None,
+        searcher: IHybridSearcher,
+        reranker: IReranker | None = None,
+        cache: ISearchCache | None = None,
     ):
         """
-        Initialize search service.
+        Initialize search service with injected dependencies.
 
         Args:
-            searcher: Optional custom hybrid searcher
-            reranker: Optional custom reranker
-            cache: Optional custom search cache
+            searcher: Hybrid search implementation (required)
+            reranker: Optional reranker for improved relevance
+            cache: Optional search cache
         """
         self._searcher = searcher
         self._reranker = reranker
         self._cache = cache
-        self._settings = get_settings()
-
-    def _get_searcher(self) -> HybridSearcher:
-        """Lazy load searcher."""
-        if self._searcher is None:
-            self._searcher = get_hybrid_searcher()
-        return self._searcher
-
-    def _get_reranker(self) -> Reranker | None:
-        """Lazy load reranker if enabled."""
-        if self._reranker is None and is_reranker_enabled():
-            self._reranker = get_reranker()
-        return self._reranker
-
-    def _get_cache(self) -> SearchCache:
-        """Lazy load cache."""
-        if self._cache is None:
-            self._cache = get_search_cache()
-        return self._cache
 
     async def search(
         self,
@@ -84,7 +62,7 @@ class SearchService:
         search_type: str = "hybrid",
         use_cache: bool = True,
         use_reranker: bool = True,
-        filters: dict | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
         """
         Perform search with optional caching and reranking.
@@ -99,58 +77,52 @@ class SearchService:
 
         Returns:
             List of SearchResult entities
+
+        Raises:
+            SearchError: If search fails
         """
         if not query or not query.strip():
             return []
 
         query = query.strip()
-        cache = self._get_cache()
 
         # Check cache
-        if use_cache:
-            cached = cache.get(
+        if use_cache and self._cache:
+            cached = self._cache.get(
                 query=query,
                 search_type=search_type,
                 top_k=top_k,
                 filters=str(filters) if filters else "",
             )
             if cached:
-                logger.debug("search_cache_hit", query=query[:50])
                 return cached
 
-        logger.info(
-            "executing_search",
-            query=query[:100],
-            top_k=top_k,
-            search_type=search_type,
-        )
-
         try:
-            searcher = self._get_searcher()
-
             # Get more results if reranking
-            fetch_k = top_k * 3 if use_reranker and is_reranker_enabled() else top_k
+            reranker_enabled = self._reranker and self._reranker.is_enabled()
+            fetch_k = top_k * 3 if use_reranker and reranker_enabled else top_k
 
             # Execute search
-            results = await searcher.search(
+            results = await self._searcher.search(
                 query=query,
                 top_k=fetch_k,
                 search_type=search_type,
+                filters=filters,
             )
 
             # Apply reranking if enabled
-            if use_reranker and results and is_reranker_enabled():
+            if use_reranker and results and reranker_enabled:
                 results = await self._apply_reranking(query, results, top_k)
             else:
                 results = results[:top_k]
 
-            # Apply filters if provided
+            # Apply additional filters if provided
             if filters:
                 results = self._apply_filters(results, filters)
 
             # Cache results
-            if use_cache and results:
-                cache.set(
+            if use_cache and self._cache and results:
+                self._cache.set(
                     query=query,
                     search_type=search_type,
                     top_k=top_k,
@@ -158,17 +130,39 @@ class SearchService:
                     filters=str(filters) if filters else "",
                 )
 
-            logger.info(
-                "search_complete",
-                query=query[:50],
-                results=len(results),
-            )
-
             return results
 
         except Exception as e:
-            logger.error("search_failed", query=query[:50], error=str(e))
             raise SearchError(f"Search failed: {str(e)}")
+
+    async def search_items(
+        self,
+        query: str,
+        top_k: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[SearchResult]:
+        """
+        Search invoice line items.
+
+        Args:
+            query: Search query
+            top_k: Number of results
+            filters: Optional filters
+
+        Returns:
+            List of item SearchResults
+        """
+        if not query or not query.strip():
+            return []
+
+        try:
+            return await self._searcher.search_items(
+                query=query.strip(),
+                top_k=top_k,
+                filters=filters,
+            )
+        except Exception as e:
+            raise SearchError(f"Item search failed: {str(e)}")
 
     async def _apply_reranking(
         self,
@@ -177,41 +171,39 @@ class SearchService:
         top_k: int,
     ) -> list[SearchResult]:
         """Apply reranking to search results."""
-        reranker = self._get_reranker()
-        if not reranker:
+        if not self._reranker:
             return results[:top_k]
 
         try:
             # Extract texts for reranking
-            texts = [r.content for r in results]
+            texts = [r.text for r in results]
 
             # Rerank
-            ranked = await reranker.rerank(query, texts, top_k=top_k)
+            ranked = await self._reranker.rerank(query, texts, top_k=top_k)
 
             # Reorder results based on reranking
             reranked_results = []
             for idx, score in ranked:
-                result = results[idx]
-                # Update score with reranker score
-                result.score = score
-                reranked_results.append(result)
+                if idx < len(results):
+                    result = results[idx]
+                    result.reranker_score = score
+                    result.final_score = score
+                    reranked_results.append(result)
 
-            logger.debug(
-                "reranking_applied",
-                original=len(results),
-                reranked=len(reranked_results),
-            )
+            # Update final ranks
+            for i, result in enumerate(reranked_results):
+                result.final_rank = i
 
             return reranked_results
 
-        except Exception as e:
-            logger.warning("reranking_failed", error=str(e))
+        except Exception:
+            # Graceful degradation - return original results
             return results[:top_k]
 
     def _apply_filters(
         self,
         results: list[SearchResult],
-        filters: dict,
+        filters: dict[str, Any],
     ) -> list[SearchResult]:
         """Apply metadata filters to results."""
         filtered = []
@@ -264,7 +256,7 @@ class SearchService:
         total_length = 0
 
         for i, result in enumerate(results):
-            chunk_text = f"[{i + 1}] {result.content}"
+            chunk_text = f"[{i + 1}] {result.text}"
 
             if total_length + len(chunk_text) > max_context_length:
                 # Truncate if needed
@@ -287,45 +279,32 @@ class SearchService:
             search_type="hybrid",
         )
 
-    async def find_similar_documents(
+    async def find_similar_chunks(
         self,
-        document_id: str,
+        chunk_id: int,
         top_k: int = 5,
     ) -> list[SearchResult]:
         """
-        Find documents similar to a given document.
+        Find chunks similar to a given chunk.
 
         Args:
-            document_id: ID of reference document
-            top_k: Number of similar documents
+            chunk_id: ID of reference chunk
+            top_k: Number of similar chunks
 
         Returns:
-            List of similar documents
+            List of similar chunks
         """
-        # TODO: Implement document-level similarity
-        # This would require aggregating chunk embeddings
-        logger.warning("find_similar_documents not fully implemented")
+        # This would require getting the chunk's embedding first
+        # Implementation depends on having chunk text available
         return []
 
     def invalidate_cache(self) -> None:
         """Clear search cache."""
-        cache = self._get_cache()
-        cache.invalidate()
-        logger.info("search_cache_invalidated")
+        if self._cache:
+            self._cache.invalidate()
 
-    def cache_stats(self) -> dict:
+    def cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
-        cache = self._get_cache()
-        return cache.stats()
-
-
-# Singleton
-_search_service: SearchService | None = None
-
-
-def get_search_service() -> SearchService:
-    """Get or create search service singleton."""
-    global _search_service
-    if _search_service is None:
-        _search_service = SearchService()
-    return _search_service
+        if self._cache:
+            return self._cache.stats()
+        return {"enabled": False}

@@ -33,6 +33,9 @@ class LLMSettings(BaseSettings):
     retry_delay: float = 1.0
     retry_multiplier: float = 2.0
 
+    # Startup settings
+    warmup_on_start: bool = False  # Whether to warm up LLM on app start
+
 
 class EmbeddingSettings(BaseSettings):
     """Embedding model configuration."""

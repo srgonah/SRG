@@ -19,8 +19,11 @@ from src.core.interfaces.parser import (
 )
 from src.core.interfaces.storage import (
     IDocumentStore,
+    IHybridSearcher,
     IIndexingStateStore,
     IInvoiceStore,
+    IReranker,
+    ISearchCache,
     ISessionStore,
     IVectorStore,
 )
@@ -40,6 +43,10 @@ __all__ = [
     "ISessionStore",
     "IVectorStore",
     "IIndexingStateStore",
+    # Search interfaces
+    "IHybridSearcher",
+    "IReranker",
+    "ISearchCache",
     # Parser interfaces
     "IInvoiceParser",
     "ITemplateDetector",

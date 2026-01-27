@@ -5,9 +5,12 @@ Creates and configures the main application instance.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.middleware import ErrorHandlerMiddleware, LoggingMiddleware
 from src.api.middleware.error_handler import setup_exception_handlers
@@ -154,6 +157,11 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(sessions_router)
 
+    # Mount static files for web UI
+    static_dir = Path(__file__).parent.parent.parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
     return app
 
 
@@ -161,14 +169,29 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-# Root endpoint
+# Root endpoint - serve web UI
 @app.get("/")
 async def root():
-    """Root endpoint."""
+    """Serve web UI or return API info."""
+    static_dir = Path(__file__).parent.parent.parent / "static"
+    index_file = static_dir / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
     return {
         "name": "SRG Invoice Processing API",
         "version": "1.0.0",
         "docs": "/docs",
+    }
+
+
+# Root health endpoint (for k8s/docker health checks)
+@app.get("/health")
+async def root_health():
+    """Simple health check at root level."""
+    import time
+    return {
+        "status": "healthy",
+        "version": "1.0.0",
     }
 
 

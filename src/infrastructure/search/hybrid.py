@@ -173,6 +173,7 @@ class HybridSearcher:
         top_k: int = 20,
         use_hybrid: bool = True,
         use_reranker: bool = False,
+        filters: dict | None = None,
     ) -> list[SearchResult]:
         """
         Search invoice items with hybrid approach.
@@ -251,6 +252,7 @@ class HybridSearcher:
         top_k: int = 10,
         search_type: str = "hybrid",
         use_reranker: bool = True,
+        filters: dict | None = None,
     ) -> list[SearchResult]:
         """
         Universal search method that routes to appropriate searcher.

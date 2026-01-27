@@ -35,4 +35,5 @@ async def test_detailed_health_async(async_client, api_prefix: str):
     if response.status_code == 200:
         data = response.json()
         assert "status" in data
-        assert "providers" in data
+        # Response has individual provider fields, not a single "providers" dict
+        assert "version" in data

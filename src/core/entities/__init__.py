@@ -11,6 +11,7 @@ from src.core.entities.document import (
 )
 from src.core.entities.invoice import (
     ArithmeticCheck,
+    ArithmeticCheckContainer,
     AuditIssue,
     AuditResult,
     AuditStatus,
@@ -38,6 +39,7 @@ __all__ = [
     "AuditIssue",
     "AuditStatus",
     "ArithmeticCheck",
+    "ArithmeticCheckContainer",
     "BankDetails",
     "RowType",
     "ParsingStatus",

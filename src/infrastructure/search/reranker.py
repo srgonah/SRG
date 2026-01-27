@@ -30,7 +30,12 @@ class Reranker:
         settings = get_settings()
         self.model_name = settings.search.reranker_model
         self.top_k = settings.search.reranker_top_k
+        self._enabled = settings.search.reranker_enabled
         self._model: CrossEncoder | None = None
+
+    def is_enabled(self) -> bool:
+        """Check if reranker is enabled and available."""
+        return self._enabled and RERANKER_AVAILABLE
 
     def _load_model(self) -> None:
         """Load the reranker model if not already loaded."""

@@ -6,6 +6,13 @@ Provides service instances to route handlers.
 
 from functools import lru_cache
 
+from src.application.services import (
+    get_chat_service,
+    get_document_indexer_service,
+    get_invoice_auditor_service,
+    get_invoice_parser_service,
+    get_search_service,
+)
 from src.application.use_cases import (
     AuditInvoiceUseCase,
     ChatWithContextUseCase,
@@ -19,11 +26,6 @@ from src.core.services import (
     InvoiceAuditorService,
     InvoiceParserService,
     SearchService,
-    get_chat_service,
-    get_document_indexer_service,
-    get_invoice_auditor_service,
-    get_invoice_parser_service,
-    get_search_service,
 )
 from src.infrastructure.llm import get_llm_provider
 from src.infrastructure.storage.sqlite import (

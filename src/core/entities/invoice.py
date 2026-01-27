@@ -5,7 +5,7 @@ All numeric fields use validators to ensure they're never None,
 preventing TypeError in downstream comparisons.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -39,6 +39,14 @@ class AuditStatus(str, Enum):
     HOLD = "HOLD"
     FAIL = "FAIL"
     ERROR = "ERROR"
+
+
+class IssueSeverity(str, Enum):
+    """Severity level for audit issues."""
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
 
 
 class LineItem(BaseModel):
@@ -132,7 +140,8 @@ class Invoice(BaseModel):
 
     # Invoice metadata
     invoice_no: str | None = None
-    invoice_date: str | None = None
+    invoice_date: date | None = None
+    due_date: date | None = None
     seller_name: str | None = None
     buyer_name: str | None = None
     company_key: str | None = None
@@ -165,6 +174,28 @@ class Invoice(BaseModel):
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator("invoice_date", "due_date", mode="before")
+    @classmethod
+    def coerce_date(cls, v: Any) -> date | None:
+        """Convert string to date, accepting ISO format or common formats."""
+        if v is None:
+            return None
+        if isinstance(v, date):
+            return v
+        if isinstance(v, datetime):
+            return v.date()
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() in {"none", "null", ""}:
+                return None
+            # Try ISO format first
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+                try:
+                    return datetime.strptime(v, fmt).date()
+                except ValueError:
+                    continue
+        return None
 
     @field_validator(
         "total_amount",
@@ -217,12 +248,19 @@ class Invoice(BaseModel):
 class AuditIssue(BaseModel):
     """Single audit issue/finding."""
 
-    field: str
-    level: str  # "error", "warning", "info"
-    category: str  # "arithmetic", "bank", "contract", "format"
-    message: str
+    code: str  # Issue code like "MISSING_REQUIRED_FIELD", "LINE_TOTAL_MISMATCH"
+    field: str = ""
+    severity: IssueSeverity = IssueSeverity.WARNING
+    category: str = ""  # "arithmetic", "bank", "contract", "format", "required"
+    message: str = ""
     expected: str | None = None
     actual: str | None = None
+    line_number: int | None = None  # For line-item issues
+
+    # Backward compatibility alias
+    @property
+    def level(self) -> str:
+        return self.severity.value
 
 
 # Alias for backward compatibility
@@ -230,12 +268,30 @@ AuditFinding = AuditIssue
 
 
 class ArithmeticCheck(BaseModel):
-    """Arithmetic verification results."""
+    """Single arithmetic check result."""
+
+    check_type: str = ""  # "line_total", "invoice_total", "tax_calculation"
+    field: str = ""  # Field path like "items[0].total_price" or "total_amount"
+    expected: float = 0.0
+    actual: float = 0.0
+    difference: float = 0.0
+    passed: bool = True
+    description: str = ""
+    line_number: int | None = None
+
+
+# Backward compatibility alias
+ArithmeticCheckItem = ArithmeticCheck
+
+
+class ArithmeticCheckContainer(BaseModel):
+    """Container for all arithmetic verification results (legacy format)."""
 
     line_checks: list[dict] = Field(default_factory=list)
     total_quantity: dict = Field(default_factory=dict)
     grand_total: dict = Field(default_factory=dict)
     overall_status: str = "PASS"
+    checks: list[ArithmeticCheck] = Field(default_factory=list)
 
 
 class AuditResult(BaseModel):
@@ -251,9 +307,19 @@ class AuditResult(BaseModel):
 
     # Result metadata
     success: bool = True
+    passed: bool = True  # Did the invoice pass all checks?
     audit_type: str = "llm"  # "llm" or "rule_based_fallback"
     status: AuditStatus = AuditStatus.HOLD
     filename: str = ""
+
+    # Audit metadata (llm_used, rule counts, etc.)
+    metadata: dict = Field(default_factory=dict)
+
+    # Arithmetic checks (new structured format)
+    arithmetic_checks: list[ArithmeticCheck] = Field(default_factory=list)
+
+    # Audited timestamp
+    audited_at: datetime | None = None
 
     # Section 1: Document Intake
     document_intake: dict = Field(default_factory=dict)
@@ -264,8 +330,8 @@ class AuditResult(BaseModel):
     # Section 3: Items Table (enriched)
     items_table: list[dict] = Field(default_factory=list)
 
-    # Section 4: Arithmetic Check
-    arithmetic_check: ArithmeticCheck = Field(default_factory=ArithmeticCheck)
+    # Section 4: Arithmetic Check (legacy container format)
+    arithmetic_check: ArithmeticCheckContainer = Field(default_factory=ArithmeticCheckContainer)
 
     # Section 5: Amount in Words Check
     amount_words_check: dict = Field(default_factory=dict)

@@ -12,6 +12,7 @@ import aiosqlite
 from src.config import get_logger
 from src.core.entities import (
     ArithmeticCheck,
+    ArithmeticCheckContainer,
     AuditIssue,
     AuditResult,
     AuditStatus,
@@ -455,7 +456,7 @@ class SQLiteInvoiceStore(IInvoiceStore):
         arithmetic_data = (
             json.loads(row["arithmetic_check_json"]) if row["arithmetic_check_json"] else {}
         )
-        arithmetic = ArithmeticCheck(**arithmetic_data) if arithmetic_data else ArithmeticCheck()
+        arithmetic = ArithmeticCheckContainer(**arithmetic_data) if arithmetic_data else ArithmeticCheckContainer()
 
         return AuditResult(
             id=row["id"],

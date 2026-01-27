@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from src.api.dependencies import get_llm
 from src.application.dto.responses import HealthResponse, ProviderHealthResponse
 
-router = APIRouter(prefix="/health", tags=["health"])
+router = APIRouter(prefix="/api/health", tags=["health"])
 
 # Track startup time
 _start_time = time.time()
@@ -67,6 +67,89 @@ async def llm_health():
         version="1.0.0",
         uptime_seconds=time.time() - _start_time,
         llm=llm_status,
+    )
+
+
+@router.get("/db", response_model=HealthResponse)
+async def db_health():
+    """
+    Database health check.
+
+    Tests SQLite connectivity and response time.
+    """
+    from src.infrastructure.storage.sqlite import get_connection_pool
+
+    db_status = ProviderHealthResponse(
+        name="sqlite",
+        available=False,
+    )
+
+    try:
+        pool = await get_connection_pool()
+        start = time.time()
+        async with pool.connection() as conn:
+            await conn.execute("SELECT 1")
+        latency = (time.time() - start) * 1000
+
+        db_status = ProviderHealthResponse(
+            name="sqlite",
+            available=True,
+            latency_ms=latency,
+        )
+
+    except Exception as e:
+        db_status = ProviderHealthResponse(
+            name="sqlite",
+            available=False,
+            error=str(e),
+        )
+
+    return HealthResponse(
+        status="healthy" if db_status.available else "unhealthy",
+        version="1.0.0",
+        uptime_seconds=time.time() - _start_time,
+        database=db_status,
+    )
+
+
+@router.get("/search", response_model=HealthResponse)
+async def search_health():
+    """
+    Search system health check.
+
+    Tests vector store and FTS availability.
+    """
+    from src.infrastructure.storage.vector import get_faiss_store
+
+    vec_status = ProviderHealthResponse(
+        name="faiss",
+        available=False,
+    )
+
+    try:
+        store = get_faiss_store()
+        start = time.time()
+        count = store.count()
+        latency = (time.time() - start) * 1000
+
+        vec_status = ProviderHealthResponse(
+            name=f"faiss ({count} vectors)",
+            available=True,
+            latency_ms=latency,
+        )
+
+    except Exception as e:
+        vec_status = ProviderHealthResponse(
+            name="faiss",
+            available=False,
+            error=str(e),
+        )
+
+    return HealthResponse(
+        status="healthy" if vec_status.available else "degraded",
+        version="1.0.0",
+        uptime_seconds=time.time() - _start_time,
+        vector_store=vec_status,
     )
 
 
@@ -153,3 +236,13 @@ async def full_health_check():
         database=db_status,
         vector_store=vec_status,
     )
+
+
+@router.get("/detailed", response_model=HealthResponse)
+async def detailed_health_check():
+    """
+    Detailed system health check (alias for /full).
+
+    Tests all components and returns provider-level status.
+    """
+    return await full_health_check()

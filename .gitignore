@@ -29,6 +29,9 @@ wheels/
 venv/
 ENV/
 env/
+Scripts/
+share/
+pyvenv.cfg
 
 # IDE
 .idea/
@@ -36,6 +39,13 @@ env/
 *.swp
 *.swo
 *~
+.claude/
+
+# Node
+node_modules/
+
+# Windows
+nul
 
 # Testing
 .pytest_cache/

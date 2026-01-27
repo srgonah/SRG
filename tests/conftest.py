@@ -8,8 +8,10 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
-from src.srg.config import settings
-from src.srg.main import app
+from src.config import get_settings
+from src.api.main import app
+
+settings = get_settings()
 
 
 @pytest.fixture(scope="session")
@@ -37,8 +39,8 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.fixture
 def api_prefix() -> str:
-    """Get API v1 prefix."""
-    return settings.API_V1_PREFIX
+    """Get API prefix."""
+    return "/api"
 
 
 @pytest.fixture

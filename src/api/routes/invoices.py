@@ -41,7 +41,8 @@ async def upload_invoice(
     Extracts text, parses invoice data, and optionally audits.
     """
     # Validate file type
-    if not file.filename.lower().endswith((".pdf", ".png", ".jpg", ".jpeg")):
+    filename = file.filename or ""
+    if not filename.lower().endswith((".pdf", ".png", ".jpg", ".jpeg")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported file type. Use PDF or image files.",
@@ -64,7 +65,7 @@ async def upload_invoice(
     )
 
     # Execute
-    result = await use_case.execute(content, file.filename, request)
+    result = await use_case.execute(content, filename, request)
 
     return use_case.to_response(result)
 
@@ -122,11 +123,12 @@ async def get_invoice(
         )
 
     return InvoiceResponse(
-        id=invoice.id,
-        document_id=invoice.document_id,
-        invoice_number=invoice.invoice_number,
-        vendor_name=invoice.vendor_name,
-        vendor_address=invoice.vendor_address,
+        id=str(invoice.id) if invoice.id else "0",
+        document_id=str(invoice.doc_id) if invoice.doc_id else None,
+        invoice_number=invoice.invoice_no,
+        vendor_name=invoice.seller_name,
+        vendor_address=None,  # Not in entity
+        buyer_name=invoice.buyer_name,
         invoice_date=invoice.invoice_date,
         due_date=invoice.due_date,
         subtotal=invoice.subtotal,
@@ -135,25 +137,26 @@ async def get_invoice(
         currency=invoice.currency,
         line_items=[
             {
-                "description": item.description,
+                "description": item.description or item.item_name,
                 "quantity": item.quantity,
                 "unit": item.unit,
                 "unit_price": item.unit_price,
                 "total_price": item.total_price,
-                "reference": item.reference,
+                "hs_code": item.hs_code,
+                "reference": None,  # Not in entity
             }
-            for item in invoice.line_items
+            for item in invoice.items
         ],
         calculated_total=invoice.calculated_total,
-        source_file=invoice.source_file,
-        parsed_at=invoice.parsed_at,
+        source_file=None,  # Not in entity
+        parsed_at=invoice.created_at,
         confidence=invoice.confidence,
     )
 
 
 @router.get(
     "",
-    response_model=list[InvoiceResponse],
+    response_model=dict,
 )
 async def list_invoices(
     limit: int = 20,
@@ -162,24 +165,30 @@ async def list_invoices(
 ):
     """List all invoices with pagination."""
     invoices = await store.list_invoices(limit=limit, offset=offset)
+    total = await store.count_invoices() if hasattr(store, 'count_invoices') else len(invoices)
 
-    return [
-        InvoiceResponse(
-            id=inv.id,
-            document_id=inv.document_id,
-            invoice_number=inv.invoice_number,
-            vendor_name=inv.vendor_name,
-            invoice_date=inv.invoice_date,
-            total_amount=inv.total_amount,
-            currency=inv.currency,
-            line_items=[],  # Don't include items in list view
-            calculated_total=inv.calculated_total,
-            source_file=inv.source_file,
-            parsed_at=inv.parsed_at,
-            confidence=inv.confidence,
-        )
-        for inv in invoices
-    ]
+    return {
+        "invoices": [
+            InvoiceResponse(
+                id=str(inv.id) if inv.id else "0",
+                document_id=str(inv.doc_id) if inv.doc_id else None,
+                invoice_number=inv.invoice_no,
+                vendor_name=inv.seller_name,
+                invoice_date=inv.invoice_date,
+                total_amount=inv.total_amount,
+                currency=inv.currency,
+                line_items=[],  # Don't include items in list view
+                calculated_total=inv.calculated_total,
+                source_file=None,  # Not in entity
+                parsed_at=inv.created_at,
+                confidence=inv.confidence,
+            ).model_dump()
+            for inv in invoices
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.delete(
@@ -214,24 +223,25 @@ async def get_invoice_audits(
 
     return [
         AuditResultResponse(
-            id=ar.id,
-            invoice_id=ar.invoice_id,
+            id=str(ar.id) if ar.id else "0",
+            invoice_id=str(ar.invoice_id),
             passed=ar.passed,
             confidence=ar.confidence,
             findings=[
                 {
-                    "category": f.category,
-                    "severity": f.severity,
-                    "message": f.message,
-                    "field": f.field,
-                    "expected": f.expected,
-                    "actual": f.actual,
+                    "code": issue.code,
+                    "category": issue.category,
+                    "severity": issue.severity.value if hasattr(issue.severity, 'value') else str(issue.severity),
+                    "message": issue.message,
+                    "field": issue.field,
+                    "expected": issue.expected,
+                    "actual": issue.actual,
                 }
-                for f in ar.findings
+                for issue in ar.issues
             ],
-            audited_at=ar.audited_at,
-            error_count=sum(1 for f in ar.findings if f.severity == "error"),
-            warning_count=sum(1 for f in ar.findings if f.severity == "warning"),
+            audited_at=ar.audited_at or ar.created_at,
+            error_count=ar.errors_count,
+            warning_count=ar.warnings_count,
         )
         for ar in audits
     ]

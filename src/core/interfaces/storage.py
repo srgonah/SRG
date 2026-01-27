@@ -368,3 +368,118 @@ class IIndexingStateStore(ABC):
     async def reset_state(self, index_name: str) -> bool:
         """Reset indexing state (for full rebuild)."""
         pass
+
+
+class IHybridSearcher(ABC):
+    """
+    Abstract interface for hybrid search (vector + keyword).
+
+    Combines semantic search with BM25/FTS keyword search.
+    """
+
+    @abstractmethod
+    async def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        search_type: str = "hybrid",
+        filters: dict[str, Any] | None = None,
+    ) -> list[Any]:  # Returns list of SearchResult
+        """
+        Perform hybrid search.
+
+        Args:
+            query: Search query text
+            top_k: Number of results to return
+            search_type: "hybrid", "semantic", or "keyword"
+            filters: Optional metadata filters
+
+        Returns:
+            List of SearchResult entities
+        """
+        pass
+
+    @abstractmethod
+    async def search_items(
+        self,
+        query: str,
+        top_k: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[Any]:  # Returns list of SearchResult
+        """Search invoice line items."""
+        pass
+
+
+class IReranker(ABC):
+    """
+    Abstract interface for search result reranking.
+
+    Reranks search results for better relevance.
+    """
+
+    @abstractmethod
+    async def rerank(
+        self,
+        query: str,
+        texts: list[str],
+        top_k: int = 10,
+    ) -> list[tuple[int, float]]:
+        """
+        Rerank texts by relevance to query.
+
+        Args:
+            query: Original search query
+            texts: List of texts to rerank
+            top_k: Number of results to return
+
+        Returns:
+            List of (original_index, score) tuples, sorted by relevance
+        """
+        pass
+
+    @abstractmethod
+    def is_enabled(self) -> bool:
+        """Check if reranker is enabled and available."""
+        pass
+
+
+class ISearchCache(ABC):
+    """
+    Abstract interface for search result caching.
+
+    Caches search results to reduce repeated queries.
+    """
+
+    @abstractmethod
+    def get(
+        self,
+        query: str,
+        search_type: str,
+        top_k: int,
+        filters: str = "",
+    ) -> list[Any] | None:
+        """Get cached search results."""
+        pass
+
+    @abstractmethod
+    def set(
+        self,
+        query: str,
+        search_type: str,
+        top_k: int,
+        results: list[Any],
+        filters: str = "",
+        ttl: int | None = None,
+    ) -> None:
+        """Cache search results."""
+        pass
+
+    @abstractmethod
+    def invalidate(self) -> None:
+        """Clear all cached results."""
+        pass
+
+    @abstractmethod
+    def stats(self) -> dict[str, Any]:
+        """Get cache statistics."""
+        pass

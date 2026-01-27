@@ -1,11 +1,15 @@
 """
 Base utilities for invoice parsers.
 
-Common patterns for text normalization, number parsing, and line filtering.
+Common patterns for text normalization, number parsing, date parsing,
+confidence scoring, and line filtering.
 """
 
 import re
 import unicodedata
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
 
 # Bank info detection patterns
 BANK_KEYWORDS = [
@@ -286,3 +290,407 @@ def split_cells_by_whitespace(line: str, min_gap: int = 2) -> list[dict]:
         )
 
     return cells
+
+
+# ============================================================================
+# Date Parsing
+# ============================================================================
+
+DATE_PATTERNS = [
+    # ISO format: 2024-01-15
+    (r"(\d{4})-(\d{1,2})-(\d{1,2})", "%Y-%m-%d"),
+    # European: 15/01/2024, 15.01.2024
+    (r"(\d{1,2})[/.](\d{1,2})[/.](\d{4})", "%d/%m/%Y"),
+    # US: 01/15/2024
+    (r"(\d{1,2})/(\d{1,2})/(\d{4})", "%m/%d/%Y"),
+    # Long: 15 January 2024, Jan 15, 2024
+    (r"(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*,?\s*(\d{4})", None),
+    (r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s*,?\s*(\d{4})", None),
+]
+
+MONTH_MAP = {
+    "jan": 1, "january": 1,
+    "feb": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12,
+}
+
+
+def parse_date(text: str | None) -> str | None:
+    """
+    Parse various date formats into ISO format (YYYY-MM-DD).
+
+    Handles:
+    - ISO: 2024-01-15
+    - European: 15/01/2024, 15.01.2024
+    - US: 01/15/2024
+    - Long: January 15, 2024 / 15 January 2024
+
+    Returns:
+        ISO date string or None if parsing fails
+    """
+    if not text or not text.strip():
+        return None
+
+    text = text.strip()
+
+    # Try ISO format first
+    iso_match = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+    if iso_match:
+        try:
+            year, month, day = map(int, iso_match.groups())
+            return f"{year:04d}-{month:02d}-{day:02d}"
+        except ValueError:
+            pass
+
+    # Try numeric formats: DD/MM/YYYY or MM/DD/YYYY
+    numeric_match = re.match(r"(\d{1,2})[/.](\d{1,2})[/.](\d{4})", text)
+    if numeric_match:
+        a, b, year = map(int, numeric_match.groups())
+        # Heuristic: if first number > 12, it's day (European format)
+        if a > 12:
+            day, month = a, b
+        elif b > 12:
+            month, day = a, b
+        else:
+            # Assume European (day/month/year) - most common in invoices
+            day, month = a, b
+
+        try:
+            datetime(year, month, day)
+            return f"{year:04d}-{month:02d}-{day:02d}"
+        except ValueError:
+            # Try swapped
+            try:
+                datetime(year, day, month)
+                return f"{year:04d}-{day:02d}-{month:02d}"
+            except ValueError:
+                pass
+
+    # Try long formats with month names
+    # Pattern: Day Month Year (15 January 2024)
+    long_match1 = re.search(
+        r"(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*,?\s*(\d{4})",
+        text,
+        re.IGNORECASE,
+    )
+    if long_match1:
+        day = int(long_match1.group(1))
+        month = MONTH_MAP.get(long_match1.group(2).lower()[:3], 0)
+        year = int(long_match1.group(3))
+        if month:
+            try:
+                datetime(year, month, day)
+                return f"{year:04d}-{month:02d}-{day:02d}"
+            except ValueError:
+                pass
+
+    # Pattern: Month Day, Year (January 15, 2024)
+    long_match2 = re.search(
+        r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s*,?\s*(\d{4})",
+        text,
+        re.IGNORECASE,
+    )
+    if long_match2:
+        month = MONTH_MAP.get(long_match2.group(1).lower()[:3], 0)
+        day = int(long_match2.group(2))
+        year = int(long_match2.group(3))
+        if month:
+            try:
+                datetime(year, month, day)
+                return f"{year:04d}-{month:02d}-{day:02d}"
+            except ValueError:
+                pass
+
+    return None
+
+
+# ============================================================================
+# Confidence Scoring
+# ============================================================================
+
+@dataclass
+class ConfidenceFactors:
+    """Factors contributing to parser confidence score."""
+
+    has_invoice_number: bool = False
+    has_invoice_date: bool = False
+    has_seller_name: bool = False
+    has_buyer_name: bool = False
+    has_total_amount: bool = False
+    items_count: int = 0
+    items_with_quantity: int = 0
+    items_with_prices: int = 0
+    items_with_hs_code: int = 0
+    arithmetic_correct: bool = True
+    template_matched: bool = False
+    template_confidence: float = 0.0
+
+
+def calculate_confidence(factors: ConfidenceFactors) -> float:
+    """
+    Calculate parsing confidence score (0.0 to 1.0).
+
+    Scoring breakdown:
+    - Invoice metadata (40% max):
+      - Invoice number: 10%
+      - Invoice date: 10%
+      - Seller name: 10%
+      - Buyer/total: 10%
+    - Line items quality (40% max):
+      - Has items: 10%
+      - Items with quantities: 15%
+      - Items with prices: 15%
+    - Validation (20% max):
+      - HS codes present: 10%
+      - Arithmetic correct: 10%
+
+    Template match can boost final score.
+    """
+    score = 0.0
+
+    # Metadata factors (40%)
+    if factors.has_invoice_number:
+        score += 0.10
+    if factors.has_invoice_date:
+        score += 0.10
+    if factors.has_seller_name:
+        score += 0.10
+    if factors.has_buyer_name or factors.has_total_amount:
+        score += 0.10
+
+    # Items quality (40%)
+    if factors.items_count > 0:
+        score += 0.10
+
+        # Quantity coverage
+        qty_ratio = factors.items_with_quantity / factors.items_count
+        score += 0.15 * qty_ratio
+
+        # Price coverage
+        price_ratio = factors.items_with_prices / factors.items_count
+        score += 0.15 * price_ratio
+
+    # Validation factors (20%)
+    if factors.items_count > 0 and factors.items_with_hs_code > 0:
+        hs_ratio = factors.items_with_hs_code / factors.items_count
+        score += 0.10 * hs_ratio
+
+    if factors.arithmetic_correct:
+        score += 0.10
+
+    # Template match boost (up to 10% bonus)
+    if factors.template_matched:
+        score += 0.10 * factors.template_confidence
+
+    return min(1.0, max(0.0, score))
+
+
+def calculate_item_confidence(item: dict[str, Any]) -> float:
+    """
+    Calculate confidence for a single line item.
+
+    Returns 0-1 based on completeness:
+    - Description: 20%
+    - Quantity: 25%
+    - Unit price: 25%
+    - Total price: 20%
+    - HS code: 10%
+    """
+    score = 0.0
+
+    if item.get("description") or item.get("item_name"):
+        score += 0.20
+
+    qty = item.get("quantity")
+    if qty is not None and qty > 0:
+        score += 0.25
+
+    unit_price = item.get("unit_price")
+    if unit_price is not None and unit_price > 0:
+        score += 0.25
+
+    total_price = item.get("total_price")
+    if total_price is not None and total_price > 0:
+        score += 0.20
+
+    if item.get("hs_code"):
+        score += 0.10
+
+    return score
+
+
+# ============================================================================
+# Enhanced Parser Result
+# ============================================================================
+
+@dataclass
+class ParserTiming:
+    """Timing information for a parser attempt."""
+
+    parser_name: str
+    started_at: datetime
+    ended_at: datetime
+    duration_ms: float
+    success: bool
+    confidence: float = 0.0
+    error: str | None = None
+
+
+@dataclass
+class EnhancedParserResult:
+    """
+    Enhanced result from invoice parsing with warnings and timings.
+
+    Extends the core ParserResult with additional context for debugging
+    and quality assessment.
+    """
+
+    success: bool
+    invoice: Any | None = None  # Invoice entity
+    items: list[Any] = field(default_factory=list)
+    confidence: float = 0.0
+    parser_name: str = ""
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Enhanced fields
+    warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    timings: list[ParserTiming] = field(default_factory=list)
+    confidence_factors: ConfidenceFactors | None = None
+
+    @property
+    def total_parse_time_ms(self) -> float:
+        """Total time spent across all parser attempts."""
+        return sum(t.duration_ms for t in self.timings)
+
+    @property
+    def parsers_tried(self) -> list[str]:
+        """Names of all parsers that were attempted."""
+        return [t.parser_name for t in self.timings]
+
+    def add_warning(self, message: str) -> None:
+        """Add a warning message."""
+        if message not in self.warnings:
+            self.warnings.append(message)
+
+    def add_note(self, message: str) -> None:
+        """Add an informational note."""
+        if message not in self.notes:
+            self.notes.append(message)
+
+    def add_timing(
+        self,
+        parser_name: str,
+        started_at: datetime,
+        ended_at: datetime,
+        success: bool,
+        confidence: float = 0.0,
+        error: str | None = None,
+    ) -> None:
+        """Record timing for a parser attempt."""
+        duration_ms = (ended_at - started_at).total_seconds() * 1000
+        self.timings.append(
+            ParserTiming(
+                parser_name=parser_name,
+                started_at=started_at,
+                ended_at=ended_at,
+                duration_ms=duration_ms,
+                success=success,
+                confidence=confidence,
+                error=error,
+            )
+        )
+
+
+# ============================================================================
+# Currency Parsing
+# ============================================================================
+
+CURRENCY_SYMBOLS = {
+    "$": "USD",
+    "€": "EUR",
+    "£": "GBP",
+    "¥": "JPY",
+    "₹": "INR",
+    "د.ج": "DZD",
+    "دج": "DZD",
+    "DA": "DZD",
+}
+
+CURRENCY_CODES = [
+    "USD", "EUR", "GBP", "JPY", "CNY", "INR", "AED", "SAR", "DZD",
+    "EGP", "MAD", "TND", "LYD", "KWD", "BHD", "OMR", "QAR", "JOD",
+]
+
+
+def detect_currency(text: str) -> str:
+    """
+    Detect currency from text.
+
+    Returns ISO currency code (default: USD).
+    """
+    if not text:
+        return "USD"
+
+    # Check for symbols
+    for symbol, code in CURRENCY_SYMBOLS.items():
+        if symbol in text:
+            return code
+
+    # Check for codes
+    text_upper = text.upper()
+    for code in CURRENCY_CODES:
+        if code in text_upper:
+            return code
+
+    return "USD"
+
+
+def strip_currency(value: str) -> str:
+    """Remove currency symbols/codes from a value string."""
+    if not value:
+        return ""
+
+    result = value
+    for symbol in CURRENCY_SYMBOLS:
+        result = result.replace(symbol, "")
+    for code in CURRENCY_CODES:
+        result = re.sub(rf"\b{code}\b", "", result, flags=re.IGNORECASE)
+
+    return result.strip()
+
+
+# ============================================================================
+# Safe String Cleanup
+# ============================================================================
+
+def safe_string(value: Any, max_length: int = 1000) -> str:
+    """
+    Safely convert value to string with cleanup.
+
+    - Handles None
+    - Normalizes Unicode
+    - Trims whitespace
+    - Enforces max length
+    """
+    if value is None:
+        return ""
+
+    s = str(value)
+    s = normalize_unicode(s)
+    s = " ".join(s.split())  # Collapse whitespace
+
+    if len(s) > max_length:
+        s = s[:max_length] + "..."
+
+    return s
