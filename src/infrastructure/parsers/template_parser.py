@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from src.config import get_logger, get_settings
 from src.core.entities import Invoice, LineItem, RowType
