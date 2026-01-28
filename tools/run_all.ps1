@@ -1,18 +1,28 @@
 <#
 .SYNOPSIS
-    SRG Close-Out Runner - Clean server restart with health verification.
+    SRG Close-Out Runner - Build WebUI, migrate DB, start server with health verification.
 
 .DESCRIPTION
     1) Kill stale uvicorn processes safely
     2) Run DB migrations
-    3) Start server on 127.0.0.1:8000
-    4) Redirect stdout+stderr to server.log
+    3) Build React WebUI (webui/dist) — skip with -SkipWebuiBuild
+    4) Start server on 127.0.0.1:8000
     5) Verify health endpoint returns 200
     6) Print useful links
 
+.PARAMETER SkipWebuiBuild
+    Skip the npm ci / npm run build step. Useful when the frontend is already built
+    or you only want to restart the backend quickly.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\tools\run_all.ps1
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\tools\run_all.ps1 -SkipWebuiBuild
 #>
+
+param(
+    [switch]$SkipWebuiBuild
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -21,6 +31,7 @@ $ServerHost = "127.0.0.1"
 $ServerPort = 8000
 $LogFile = "server.log"
 $HealthTimeout = 30  # seconds
+$WebuiDir = Join-Path $PSScriptRoot "..\webui"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  SRG Close-Out Runner" -ForegroundColor Cyan
@@ -28,7 +39,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Step 1: Kill stale uvicorn processes
-Write-Host "[1/5] Killing stale uvicorn processes..." -ForegroundColor Yellow
+Write-Host "[1/6] Killing stale uvicorn processes..." -ForegroundColor Yellow
 $uvicornProcesses = Get-Process -Name "uvicorn" -ErrorAction SilentlyContinue
 if ($uvicornProcesses) {
     $count = ($uvicornProcesses | Measure-Object).Count
@@ -50,7 +61,7 @@ if ($portInUse) {
 
 # Step 2: Run DB migrations
 Write-Host ""
-Write-Host "[2/5] Running database migrations..." -ForegroundColor Yellow
+Write-Host "[2/6] Running database migrations..." -ForegroundColor Yellow
 # Use cmd.exe to avoid PowerShell NativeCommandError on stderr warnings
 $migrationOutput = cmd /c "python -m src.infrastructure.storage.sqlite.migrations.migrator 2>&1"
 $migrationExit = $LASTEXITCODE
@@ -61,9 +72,59 @@ if ($migrationExit -ne 0) {
 }
 Write-Host "       Migrations complete." -ForegroundColor Green
 
-# Step 3: Clear old log file
+# Step 3: Build WebUI
 Write-Host ""
-Write-Host "[3/5] Starting uvicorn server..." -ForegroundColor Yellow
+Write-Host "[3/6] Building React WebUI..." -ForegroundColor Yellow
+
+if ($SkipWebuiBuild) {
+    Write-Host "       Skipped (-SkipWebuiBuild flag)." -ForegroundColor Gray
+} elseif (-not (Test-Path $WebuiDir)) {
+    Write-Host "       Skipped (webui/ directory not found)." -ForegroundColor Gray
+} else {
+    # Check if npm is available
+    $npmPath = Get-Command npm -ErrorAction SilentlyContinue
+    if (-not $npmPath) {
+        Write-Host "       npm not found. Skipping WebUI build." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "       To enable WebUI builds, install Node.js LTS:" -ForegroundColor Gray
+        Write-Host "         https://nodejs.org/ (download the LTS version)" -ForegroundColor Gray
+        Write-Host "         Or: winget install OpenJS.NodeJS.LTS" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "       After installing, re-run this script." -ForegroundColor Gray
+    } else {
+        $savedDir = Get-Location
+        Set-Location $WebuiDir
+
+        # Install dependencies (clean install for reproducibility)
+        Write-Host "       Running npm ci..." -ForegroundColor Gray
+        $npmCiOutput = cmd /c "npm ci 2>&1"
+        $npmCiExit = $LASTEXITCODE
+        if ($npmCiExit -ne 0) {
+            Write-Host "       npm ci failed!" -ForegroundColor Red
+            $npmCiOutput | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
+            Set-Location $savedDir
+            exit 1
+        }
+
+        # Build
+        Write-Host "       Running npm run build..." -ForegroundColor Gray
+        $npmBuildOutput = cmd /c "npm run build 2>&1"
+        $npmBuildExit = $LASTEXITCODE
+        if ($npmBuildExit -ne 0) {
+            Write-Host "       npm run build failed!" -ForegroundColor Red
+            $npmBuildOutput | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
+            Set-Location $savedDir
+            exit 1
+        }
+
+        Set-Location $savedDir
+        Write-Host "       WebUI built to webui/dist/." -ForegroundColor Green
+    }
+}
+
+# Step 4: Start server
+Write-Host ""
+Write-Host "[4/6] Starting uvicorn server..." -ForegroundColor Yellow
 if (Test-Path $LogFile) {
     Remove-Item $LogFile -Force
 }
@@ -80,9 +141,9 @@ $serverProcess = Start-Process -FilePath "uvicorn" `
 Write-Host "       Server started (PID: $($serverProcess.Id))" -ForegroundColor Green
 Write-Host "       Logging to: $LogFile" -ForegroundColor Gray
 
-# Step 4: Wait for server startup and verify health
+# Step 5: Wait for server startup and verify health
 Write-Host ""
-Write-Host "[4/5] Waiting for server to be ready..." -ForegroundColor Yellow
+Write-Host "[5/6] Waiting for server to be ready..." -ForegroundColor Yellow
 
 $healthUrl = "http://${ServerHost}:${ServerPort}/api/health"
 $startTime = Get-Date
@@ -117,14 +178,15 @@ if (-not $isHealthy) {
 $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
 Write-Host "       Health check passed in ${elapsed}s" -ForegroundColor Green
 
-# Step 5: Print useful links
+# Step 6: Print useful links
 Write-Host ""
-Write-Host "[5/5] Server is ready!" -ForegroundColor Yellow
+Write-Host "[6/6] Server is ready!" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  SRG Server Running" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
+Write-Host "  Web UI:      http://${ServerHost}:${ServerPort}/" -ForegroundColor Cyan
 Write-Host "  Swagger UI:  http://${ServerHost}:${ServerPort}/docs" -ForegroundColor Cyan
 Write-Host "  OpenAPI:     http://${ServerHost}:${ServerPort}/openapi.json" -ForegroundColor Cyan
 Write-Host "  Health:      http://${ServerHost}:${ServerPort}/api/health" -ForegroundColor Cyan

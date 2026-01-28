@@ -154,6 +154,50 @@ GET /docs          → 200 (Swagger UI)
 
 ---
 
+## One-Command Workflow
+
+`run_all.ps1` builds the WebUI, runs migrations, starts the server, and verifies health — all in one step:
+
+```powershell
+# Full build + serve (from project root)
+powershell -ExecutionPolicy Bypass -File .\tools\run_all.ps1
+
+# Skip WebUI build (backend-only restart)
+powershell -ExecutionPolicy Bypass -File .\tools\run_all.ps1 -SkipWebuiBuild
+```
+
+### What it does (6 steps)
+
+| Step | Action |
+|------|--------|
+| 1/6 | Kill stale uvicorn processes |
+| 2/6 | Run DB migrations |
+| 3/6 | Build React WebUI (`npm ci` + `npm run build` into `webui/dist/`) |
+| 4/6 | Start uvicorn server on `127.0.0.1:8000` |
+| 5/6 | Wait for `/api/health` to return 200 |
+| 6/6 | Print links: Web UI, Swagger, OpenAPI, Health |
+
+### Flags
+
+- **`-SkipWebuiBuild`** — Skip step 3 entirely. Use when the frontend is already built or you only need to restart the backend.
+
+### Missing npm?
+
+If Node.js/npm is not installed, step 3 prints a friendly message and continues without building:
+
+```
+[3/6] Building React WebUI...
+       npm not found. Skipping WebUI build.
+
+       To enable WebUI builds, install Node.js LTS:
+         https://nodejs.org/ (download the LTS version)
+         Or: winget install OpenJS.NodeJS.LTS
+```
+
+The server will still start and serve the minimal fallback page at `/`.
+
+---
+
 ## Minimal Fallback (`static/index.html`)
 
 A zero-dependency HTML page served by FastAPI at `GET /` when `webui/dist/` does not exist. It includes:
