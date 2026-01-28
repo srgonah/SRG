@@ -19,6 +19,8 @@ from src.core.services import (
     DocumentIndexerService,
     InvoiceAuditorService,
     InvoiceParserService,
+    MaterialIngestionService,
+    ProformaPdfService,
     SearchService,
 )
 
@@ -28,10 +30,12 @@ if TYPE_CHECKING:
         IEmbeddingProvider,
         IInvoiceStore,
         ILLMProvider,
+        IMaterialStore,
         IParserRegistry,
         ISessionStore,
         IVectorStore,
     )
+    from src.core.interfaces.price_history import IPriceHistoryStore
 
 
 # Singleton service instances
@@ -40,6 +44,8 @@ _invoice_auditor_service: InvoiceAuditorService | None = None
 _document_indexer_service: DocumentIndexerService | None = None
 _search_service: SearchService | None = None
 _chat_service: ChatService | None = None
+_proforma_pdf_service: ProformaPdfService | None = None
+_material_ingestion_service: MaterialIngestionService | None = None
 
 
 def get_invoice_parser_service(
@@ -89,16 +95,18 @@ def get_invoice_parser_service(
 def get_invoice_auditor_service(
     llm_provider: "ILLMProvider | None" = None,
     invoice_store: "IInvoiceStore | None" = None,
+    price_history_store: "IPriceHistoryStore | None" = None,
 ) -> InvoiceAuditorService:
     """
     Get or create InvoiceAuditorService instance.
 
     Creates infrastructure dependencies if not provided.
-    LLM provider is optional - audit degrades gracefully without it.
+    LLM provider and price history store are optional - audit degrades gracefully.
 
     Args:
         llm_provider: Optional LLM provider override
         invoice_store: Optional invoice store override
+        price_history_store: Optional price history store for anomaly detection
 
     Returns:
         Configured InvoiceAuditorService
@@ -119,9 +127,21 @@ def get_invoice_auditor_service(
             # LLM provider optional - graceful degradation
             llm = None
 
+    price_store = price_history_store
+    if price_store is None:
+        try:
+            from src.infrastructure.storage.sqlite.price_history_store import (
+                SQLitePriceHistoryStore,
+            )
+
+            price_store = SQLitePriceHistoryStore()
+        except Exception:
+            price_store = None
+
     service = InvoiceAuditorService(
         llm_provider=llm,
         invoice_store=invoice_store,
+        price_history_store=price_store,
     )
 
     if llm_provider is None:
@@ -286,6 +306,75 @@ async def get_chat_service(
     return service
 
 
+def get_proforma_pdf_service(
+    invoice_store: "IInvoiceStore | None" = None,
+) -> ProformaPdfService:
+    """
+    Get or create ProformaPdfService instance.
+
+    Args:
+        invoice_store: Optional invoice store override
+
+    Returns:
+        Configured ProformaPdfService
+    """
+    global _proforma_pdf_service
+
+    if _proforma_pdf_service is not None and invoice_store is None:
+        return _proforma_pdf_service
+
+    # Lazy import infrastructure
+    from src.infrastructure.pdf import Fpdf2ProformaRenderer
+
+    renderer = Fpdf2ProformaRenderer()
+    inv_store = invoice_store
+
+    service = ProformaPdfService(
+        renderer=renderer,
+        invoice_store=inv_store,  # type: ignore[arg-type]
+    )
+
+    if invoice_store is None:
+        _proforma_pdf_service = service
+
+    return service
+
+
+def get_material_ingestion_service(
+    material_store: "IMaterialStore | None" = None,
+) -> MaterialIngestionService:
+    """
+    Get or create MaterialIngestionService instance.
+
+    Args:
+        material_store: Optional material store override.
+
+    Returns:
+        Configured MaterialIngestionService.
+    """
+    global _material_ingestion_service
+
+    if _material_ingestion_service is not None and material_store is None:
+        return _material_ingestion_service
+
+    # Lazy import infrastructure
+    from src.infrastructure.scrapers import AmazonProductFetcher
+    from src.infrastructure.storage.sqlite.material_store import SQLiteMaterialStore
+
+    fetchers = [AmazonProductFetcher()]
+    store = material_store or SQLiteMaterialStore()
+
+    service = MaterialIngestionService(
+        fetchers=fetchers,
+        material_store=store,
+    )
+
+    if material_store is None:
+        _material_ingestion_service = service
+
+    return service
+
+
 def reset_services() -> None:
     """
     Reset all singleton service instances.
@@ -297,12 +386,16 @@ def reset_services() -> None:
     global _document_indexer_service
     global _search_service
     global _chat_service
+    global _proforma_pdf_service
+    global _material_ingestion_service
 
     _invoice_parser_service = None
     _invoice_auditor_service = None
     _document_indexer_service = None
     _search_service = None
     _chat_service = None
+    _proforma_pdf_service = None
+    _material_ingestion_service = None
 
 
 __all__ = [
@@ -312,6 +405,8 @@ __all__ = [
     "get_document_indexer_service",
     "get_search_service",
     "get_chat_service",
+    "get_proforma_pdf_service",
+    "get_material_ingestion_service",
     # Reset
     "reset_services",
 ]

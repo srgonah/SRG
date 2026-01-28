@@ -10,6 +10,16 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class CatalogSuggestionResponse(BaseModel):
+    """Candidate material suggestion for unmatched items."""
+
+    material_id: str = Field(..., description="Material ID")
+    name: str = Field(..., description="Material name")
+    normalized_name: str = Field(..., description="Normalized material name")
+    hs_code: str | None = Field(default=None, description="HS code")
+    unit: str | None = Field(default=None, description="Unit of measure")
+
+
 class LineItemResponse(BaseModel):
     """Line item in invoice response."""
 
@@ -20,6 +30,16 @@ class LineItemResponse(BaseModel):
     total_price: float = Field(..., description="Line total (qty * unit_price)")
     hs_code: str | None = Field(default=None, description="HS code if available")
     reference: str | None = Field(default=None, description="Item reference/SKU")
+    matched_material_id: str | None = Field(
+        default=None, description="Linked material ID if cataloged"
+    )
+    needs_catalog: bool = Field(
+        default=False, description="True when item is a line item with no matched material"
+    )
+    catalog_suggestions: list[CatalogSuggestionResponse] = Field(
+        default_factory=list,
+        description="Top candidate materials for unmatched items",
+    )
 
 
 class InvoiceResponse(BaseModel):
@@ -243,13 +263,32 @@ class HealthResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """Error response DTO."""
+    """Standardized error response DTO.
 
-    error: str
-    detail: str | None = None
-    code: str | None = None
-    path: str | None = None
+    Every error response includes:
+    - error_code: machine-readable code (e.g. INVOICE_NOT_FOUND)
+    - message: human-readable description
+    - hint: suggested recovery action
+    - path: request path that triggered the error
+    """
+
+    error_code: str = Field(..., description="Machine-readable error code")
+    message: str = Field(..., description="Human-readable error description")
+    hint: str | None = Field(default=None, description="Suggested recovery action")
+    detail: str | None = Field(default=None, description="Additional details")
+    path: str | None = Field(default=None, description="Request path")
     timestamp: datetime = Field(default_factory=datetime.now)
+
+    # Backward-compatible aliases
+    @property
+    def error(self) -> str:
+        """Alias for message (backward compat)."""
+        return self.message
+
+    @property
+    def code(self) -> str:
+        """Alias for error_code (backward compat)."""
+        return self.error_code
 
 
 class PaginatedResponse(BaseModel):
@@ -259,3 +298,285 @@ class PaginatedResponse(BaseModel):
     limit: int
     offset: int
     has_more: bool
+
+
+# --- Catalog / Materials ---
+
+
+class MaterialSynonymResponse(BaseModel):
+    """Material synonym in response."""
+
+    id: str
+    synonym: str
+    language: str = "en"
+
+
+class MaterialResponse(BaseModel):
+    """Material catalog entry response."""
+
+    id: str
+    name: str
+    normalized_name: str
+    hs_code: str | None = None
+    category: str | None = None
+    unit: str | None = None
+    description: str | None = None
+    brand: str | None = None
+    source_url: str | None = None
+    origin_country: str | None = None
+    origin_confidence: str = "unknown"
+    synonyms: list[MaterialSynonymResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class MaterialListResponse(BaseModel):
+    """Paginated list of materials."""
+
+    materials: list[MaterialResponse]
+    total: int
+
+
+# --- Price History ---
+
+
+class PriceHistoryEntryResponse(BaseModel):
+    """Single price history entry."""
+
+    item_name: str
+    hs_code: str | None = None
+    seller_name: str | None = None
+    invoice_date: str | None = None
+    quantity: float
+    unit_price: float
+    currency: str = "USD"
+
+
+class PriceHistoryResponse(BaseModel):
+    """Price history query response."""
+
+    entries: list[PriceHistoryEntryResponse]
+    total: int
+
+
+class PriceStatsResponse(BaseModel):
+    """Price statistics for an item."""
+
+    item_name: str
+    hs_code: str | None = None
+    seller_name: str | None = None
+    currency: str = "USD"
+    occurrence_count: int = 0
+    min_price: float = 0.0
+    max_price: float = 0.0
+    avg_price: float = 0.0
+    price_trend: str | None = None
+    first_seen: str | None = None
+    last_seen: str | None = None
+
+
+class PriceStatsListResponse(BaseModel):
+    """List of price statistics."""
+
+    stats: list[PriceStatsResponse]
+    total: int
+
+
+# --- Add to Catalog ---
+
+
+class AddToCatalogResponse(BaseModel):
+    """Response for add-to-catalog operation."""
+
+    materials_created: int = 0
+    materials_updated: int = 0
+    materials: list[MaterialResponse] = Field(default_factory=list)
+
+
+# --- Proforma PDF ---
+
+
+class ProformaPdfResponse(BaseModel):
+    """Response for proforma PDF generation."""
+
+    invoice_id: str
+    file_path: str
+    file_size: int
+
+
+# --- Company Documents ---
+
+
+class CompanyDocumentResponse(BaseModel):
+    """Company document response DTO."""
+
+    id: int
+    company_key: str
+    title: str
+    document_type: str
+    file_path: str | None = None
+    doc_id: int | None = None
+    expiry_date: date | None = None
+    issued_date: date | None = None
+    issuer: str | None = None
+    notes: str | None = None
+    is_expired: bool = False
+    days_until_expiry: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class CompanyDocumentListResponse(BaseModel):
+    """Paginated list of company documents."""
+
+    documents: list[CompanyDocumentResponse]
+    total: int
+
+
+# --- Reminders ---
+
+
+class ReminderResponse(BaseModel):
+    """Reminder response DTO."""
+
+    id: int
+    title: str
+    message: str = ""
+    due_date: date
+    is_done: bool = False
+    is_overdue: bool = False
+    linked_entity_type: str | None = None
+    linked_entity_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReminderListResponse(BaseModel):
+    """Paginated list of reminders."""
+
+    reminders: list[ReminderResponse]
+    total: int
+
+
+# --- Material Ingestion ---
+
+
+class ExpiryCheckResponse(BaseModel):
+    """Response for expiring document check."""
+
+    total_expiring: int = Field(..., description="Total documents expiring within window")
+    reminders_created: int = Field(..., description="New reminders created")
+    already_reminded: int = Field(..., description="Documents that already had active reminders")
+    created_reminder_ids: list[int] = Field(
+        default_factory=list, description="IDs of newly created reminders"
+    )
+
+
+class IngestMaterialResponse(BaseModel):
+    """Response for material ingestion from external URL."""
+
+    material: MaterialResponse
+    created: bool = Field(
+        ..., description="True if a new material was created, False if existing was updated"
+    )
+    synonyms_added: list[str] = Field(
+        default_factory=list, description="Synonyms that were added"
+    )
+    source_url: str = Field(..., description="URL the data was ingested from")
+    brand: str | None = Field(default=None, description="Extracted brand")
+    origin_country: str | None = Field(default=None, description="Extracted country of origin")
+    origin_confidence: str = Field(default="unknown", description="Confidence in origin data")
+    evidence_text: str | None = Field(default=None, description="Evidence for origin inference")
+
+
+# --- Inventory ---
+
+
+class StockMovementResponse(BaseModel):
+    """Stock movement response DTO."""
+
+    id: int
+    movement_type: str
+    quantity: float
+    unit_cost: float
+    reference: str | None = None
+    notes: str | None = None
+    movement_date: date
+    created_at: datetime
+
+
+class InventoryItemResponse(BaseModel):
+    """Inventory item response DTO."""
+
+    id: int
+    material_id: str
+    quantity_on_hand: float
+    avg_cost: float
+    total_value: float
+    last_movement_date: date | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReceiveStockResponse(BaseModel):
+    """Response for stock receive operation."""
+
+    inventory_item: InventoryItemResponse
+    movement: StockMovementResponse
+    created: bool = False  # True if new inventory item was created
+
+
+class IssueStockResponse(BaseModel):
+    """Response for stock issue operation."""
+
+    inventory_item: InventoryItemResponse
+    movement: StockMovementResponse
+
+
+class InventoryStatusResponse(BaseModel):
+    """Paginated inventory status response."""
+
+    items: list[InventoryItemResponse]
+    total: int
+
+
+# --- Local Sales ---
+
+
+class LocalSalesItemResponse(BaseModel):
+    """Local sales item response DTO."""
+
+    id: int
+    inventory_item_id: int
+    material_id: str
+    description: str
+    quantity: float
+    unit_price: float
+    cost_basis: float
+    line_total: float
+    profit: float
+
+
+class LocalSalesInvoiceResponse(BaseModel):
+    """Local sales invoice response DTO."""
+
+    id: int
+    invoice_number: str
+    customer_name: str
+    sale_date: date
+    subtotal: float
+    tax_amount: float
+    total_amount: float
+    total_cost: float
+    total_profit: float
+    notes: str | None = None
+    items: list[LocalSalesItemResponse]
+    created_at: datetime
+
+
+class SalesInvoiceListResponse(BaseModel):
+    """Paginated list of sales invoices."""
+
+    invoices: list[LocalSalesInvoiceResponse]
+    total: int

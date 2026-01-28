@@ -70,6 +70,24 @@ class SessionNotFoundError(StorageError):
         )
 
 
+# Catalog Exceptions
+class CatalogError(SRGError):
+    """Base exception for catalog operations."""
+
+    pass
+
+
+class MaterialNotFoundError(CatalogError):
+    """Material not found in catalog."""
+
+    def __init__(self, material_id: str | int):
+        super().__init__(
+            f"Material not found: {material_id}",
+            code="MATERIAL_NOT_FOUND",
+            details={"material_id": material_id},
+        )
+
+
 class DuplicateDocumentError(StorageError):
     """Document with same hash already exists."""
 
@@ -288,6 +306,58 @@ class UnsupportedFileTypeError(ValidationError):
                 "extension": extension,
                 "allowed": allowed,
             }
+        )
+
+
+# Inventory Exceptions
+class InventoryError(SRGError):
+    """Base exception for inventory operations."""
+
+    pass
+
+
+class InsufficientStockError(InventoryError):
+    """Not enough stock to fulfill the request."""
+
+    def __init__(self, material_id: str, requested: float, available: float):
+        super().__init__(
+            f"Insufficient stock for material {material_id}: "
+            f"requested {requested}, available {available}",
+            code="INSUFFICIENT_STOCK",
+            details={
+                "material_id": material_id,
+                "requested": requested,
+                "available": available,
+            },
+        )
+
+
+class InventoryItemNotFoundError(InventoryError):
+    """Inventory item not found."""
+
+    def __init__(self, item_id: int):
+        super().__init__(
+            f"Inventory item not found: {item_id}",
+            code="INVENTORY_ITEM_NOT_FOUND",
+            details={"item_id": item_id},
+        )
+
+
+# Sales Exceptions
+class SalesError(SRGError):
+    """Base exception for sales operations."""
+
+    pass
+
+
+class SalesInvoiceNotFoundError(SalesError):
+    """Sales invoice not found."""
+
+    def __init__(self, invoice_id: int):
+        super().__init__(
+            f"Sales invoice not found: {invoice_id}",
+            code="SALES_INVOICE_NOT_FOUND",
+            details={"invoice_id": invoice_id},
         )
 
 

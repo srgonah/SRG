@@ -73,6 +73,9 @@ class LineItem(BaseModel):
     unit_price: float = 0.0
     total_price: float = 0.0
 
+    # Catalog link
+    matched_material_id: str | None = None
+
     # Metadata
     row_type: RowType = RowType.LINE_ITEM
 

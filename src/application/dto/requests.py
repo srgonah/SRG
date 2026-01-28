@@ -34,6 +34,10 @@ class UploadInvoiceRequest(BaseModel):
         default=True,
         description="Automatically audit after parsing",
     )
+    auto_catalog: bool = Field(
+        default=True,
+        description="Automatically match items to materials catalog",
+    )
     auto_index: bool = Field(
         default=True,
         description="Automatically index for search after parsing",
@@ -209,4 +213,186 @@ class IndexDirectoryRequest(BaseModel):
     extensions: list[str] | None = Field(
         default=None,
         description="File extensions to include",
+    )
+
+
+class AddToCatalogRequest(BaseModel):
+    """Request to add invoice items to the materials catalog."""
+
+    invoice_id: int = Field(
+        ...,
+        description="Invoice ID whose items to add to catalog",
+    )
+    item_ids: list[int] | None = Field(
+        default=None,
+        description="Specific item IDs to add (all LINE_ITEM rows if None)",
+    )
+
+
+# --- Proforma PDF ---
+
+
+class GenerateProformaPdfRequest(BaseModel):
+    """Request to generate a proforma PDF for an invoice."""
+
+    invoice_id: str = Field(
+        ...,
+        description="Invoice ID to generate proforma PDF for",
+    )
+
+
+# --- Company Documents ---
+
+
+class CreateCompanyDocumentRequest(BaseModel):
+    """Request to create a company document."""
+
+    company_key: str = Field(..., description="Company identifier")
+    title: str = Field(..., description="Document title")
+    document_type: str = Field(
+        default="other",
+        description="Document type: license, certificate, permit, insurance, contract, other",
+    )
+    expiry_date: str | None = Field(
+        default=None,
+        description="Expiry date in ISO format (YYYY-MM-DD)",
+    )
+    issued_date: str | None = Field(
+        default=None,
+        description="Issued date in ISO format (YYYY-MM-DD)",
+    )
+    issuer: str | None = Field(default=None, description="Issuing authority")
+    notes: str | None = Field(default=None, description="Additional notes")
+    metadata: dict[str, Any] | None = Field(default=None, description="Extra metadata")
+
+
+class UpdateCompanyDocumentRequest(BaseModel):
+    """Request to update a company document."""
+
+    company_key: str | None = Field(default=None, description="Company identifier")
+    title: str | None = Field(default=None, description="Document title")
+    document_type: str | None = Field(default=None, description="Document type")
+    expiry_date: str | None = Field(default=None, description="Expiry date (YYYY-MM-DD)")
+    issued_date: str | None = Field(default=None, description="Issued date (YYYY-MM-DD)")
+    issuer: str | None = Field(default=None, description="Issuing authority")
+    notes: str | None = Field(default=None, description="Additional notes")
+    metadata: dict[str, Any] | None = Field(default=None, description="Extra metadata")
+
+
+class ListExpiringDocumentsRequest(BaseModel):
+    """Request to list expiring documents."""
+
+    within_days: int = Field(
+        default=30,
+        ge=1,
+        description="Number of days to look ahead for expiring documents",
+    )
+
+
+# --- Reminders ---
+
+
+class CreateReminderRequest(BaseModel):
+    """Request to create a reminder."""
+
+    title: str = Field(..., description="Reminder title")
+    message: str = Field(default="", description="Reminder message/details")
+    due_date: str = Field(..., description="Due date in ISO format (YYYY-MM-DD)")
+    linked_entity_type: str | None = Field(
+        default=None,
+        description="Linked entity type (e.g., 'invoice', 'company_document')",
+    )
+    linked_entity_id: int | None = Field(
+        default=None,
+        description="ID of the linked entity",
+    )
+
+
+class UpdateReminderRequest(BaseModel):
+    """Request to update a reminder."""
+
+    title: str | None = Field(default=None, description="Reminder title")
+    message: str | None = Field(default=None, description="Reminder message")
+    due_date: str | None = Field(default=None, description="Due date (YYYY-MM-DD)")
+    is_done: bool | None = Field(default=None, description="Mark as done/undone")
+    linked_entity_type: str | None = Field(default=None, description="Linked entity type")
+    linked_entity_id: int | None = Field(default=None, description="Linked entity ID")
+
+
+# --- Material Ingestion ---
+
+
+class IngestMaterialRequest(BaseModel):
+    """Request to ingest a material from an external product URL."""
+
+    url: str = Field(
+        ...,
+        description="Product page URL (e.g., https://amazon.ae/dp/...)",
+        examples=["https://www.amazon.ae/dp/B09V3KXJPB"],
+    )
+    category: str | None = Field(
+        default=None,
+        description="Optional material category override",
+    )
+    unit: str | None = Field(
+        default=None,
+        description="Optional unit of measure override (e.g., PCS, M, KG)",
+    )
+
+
+# --- Inventory ---
+
+
+class ReceiveStockRequest(BaseModel):
+    """Request to receive stock (IN movement)."""
+
+    material_id: str = Field(..., description="Material catalog ID")
+    quantity: float = Field(..., gt=0, description="Quantity to receive")
+    unit_cost: float = Field(..., ge=0, description="Cost per unit")
+    reference: str | None = Field(default=None, description="PO or invoice reference")
+    notes: str | None = Field(default=None, description="Additional notes")
+    movement_date: str | None = Field(
+        default=None,
+        description="Movement date in ISO format (defaults to today)",
+    )
+
+
+class IssueStockRequest(BaseModel):
+    """Request to issue stock (OUT movement)."""
+
+    material_id: str = Field(..., description="Material catalog ID")
+    quantity: float = Field(..., gt=0, description="Quantity to issue")
+    reference: str | None = Field(default=None, description="Reference number")
+    notes: str | None = Field(default=None, description="Additional notes")
+    movement_date: str | None = Field(
+        default=None,
+        description="Movement date in ISO format (defaults to today)",
+    )
+
+
+# --- Local Sales ---
+
+
+class CreateSalesItemRequest(BaseModel):
+    """A single item in a local sales invoice."""
+
+    material_id: str = Field(..., description="Material catalog ID")
+    description: str = Field(..., description="Item description")
+    quantity: float = Field(..., gt=0, description="Quantity sold")
+    unit_price: float = Field(..., ge=0, description="Selling price per unit")
+
+
+class CreateSalesInvoiceRequest(BaseModel):
+    """Request to create a local sales invoice."""
+
+    invoice_number: str = Field(..., description="Invoice number")
+    customer_name: str = Field(..., description="Customer name")
+    sale_date: str | None = Field(
+        default=None,
+        description="Sale date in ISO format (defaults to today)",
+    )
+    tax_amount: float = Field(default=0.0, ge=0, description="Tax amount")
+    notes: str | None = Field(default=None, description="Additional notes")
+    items: list[CreateSalesItemRequest] = Field(
+        ..., description="Line items to sell"
     )

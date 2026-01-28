@@ -7,6 +7,7 @@ Defines contracts for document, invoice, session, and vector stores.
 from abc import ABC, abstractmethod
 from typing import Any
 
+from src.core.entities.company_document import CompanyDocument
 from src.core.entities.document import (
     Chunk,
     Document,
@@ -14,7 +15,12 @@ from src.core.entities.document import (
     Page,
 )
 from src.core.entities.invoice import AuditResult, Invoice
+from src.core.entities.reminder import Reminder
 from src.core.entities.session import ChatSession, MemoryFact, Message
+from src.core.interfaces.inventory_store import IInventoryStore as IInventoryStore  # noqa: F401
+from src.core.interfaces.material_store import IMaterialStore as IMaterialStore  # noqa: F401
+from src.core.interfaces.price_history import IPriceHistoryStore as IPriceHistoryStore  # noqa: F401
+from src.core.interfaces.sales_store import ISalesStore as ISalesStore  # noqa: F401
 
 
 class IDocumentStore(ABC):
@@ -174,7 +180,14 @@ class IInvoiceStore(ABC):
         """List audit results."""
         pass
 
-    # Item operations for search
+    # Item operations
+    @abstractmethod
+    async def update_item_material_id(
+        self, item_id: int, material_id: str
+    ) -> bool:
+        """Set matched_material_id on an invoice item. Returns True if updated."""
+        pass
+
     @abstractmethod
     async def get_items_for_indexing(
         self,
@@ -482,4 +495,95 @@ class ISearchCache(ABC):
     @abstractmethod
     def stats(self) -> dict[str, Any]:
         """Get cache statistics."""
+        pass
+
+
+class ICompanyDocumentStore(ABC):
+    """
+    Abstract interface for company document storage.
+
+    Handles company documents with expiry tracking.
+    """
+
+    @abstractmethod
+    async def create(self, doc: CompanyDocument) -> CompanyDocument:
+        """Create a new company document record."""
+        pass
+
+    @abstractmethod
+    async def get(self, doc_id: int) -> CompanyDocument | None:
+        """Get company document by ID."""
+        pass
+
+    @abstractmethod
+    async def update(self, doc: CompanyDocument) -> CompanyDocument:
+        """Update an existing company document."""
+        pass
+
+    @abstractmethod
+    async def delete(self, doc_id: int) -> bool:
+        """Delete a company document by ID."""
+        pass
+
+    @abstractmethod
+    async def list_by_company(
+        self, company_key: str, limit: int = 100, offset: int = 0
+    ) -> list[CompanyDocument]:
+        """List company documents for a given company."""
+        pass
+
+    @abstractmethod
+    async def list_expiring(
+        self, within_days: int = 30, limit: int = 100
+    ) -> list[CompanyDocument]:
+        """List documents expiring within the given number of days."""
+        pass
+
+
+class IReminderStore(ABC):
+    """
+    Abstract interface for reminder storage.
+
+    Handles reminder CRUD and queries.
+    """
+
+    @abstractmethod
+    async def create(self, reminder: Reminder) -> Reminder:
+        """Create a new reminder."""
+        pass
+
+    @abstractmethod
+    async def get(self, reminder_id: int) -> Reminder | None:
+        """Get reminder by ID."""
+        pass
+
+    @abstractmethod
+    async def update(self, reminder: Reminder) -> Reminder:
+        """Update an existing reminder."""
+        pass
+
+    @abstractmethod
+    async def delete(self, reminder_id: int) -> bool:
+        """Delete a reminder by ID."""
+        pass
+
+    @abstractmethod
+    async def list_reminders(
+        self, include_done: bool = False, limit: int = 100, offset: int = 0
+    ) -> list[Reminder]:
+        """List reminders with optional done filter."""
+        pass
+
+    @abstractmethod
+    async def list_upcoming(
+        self, within_days: int = 7, limit: int = 100
+    ) -> list[Reminder]:
+        """List upcoming reminders within the given number of days."""
+        pass
+
+    @abstractmethod
+    async def find_by_linked_entity(
+        self, entity_type: str, entity_id: int
+    ) -> list[Reminder]:
+        """Find reminders linked to a specific entity."""
         pass

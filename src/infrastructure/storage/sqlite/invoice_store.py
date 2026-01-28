@@ -361,6 +361,24 @@ class SQLiteInvoiceStore(IInvoiceStore):
             rows = await cursor.fetchall()
             return [self._row_to_audit_result(row) for row in rows]
 
+    async def update_item_material_id(
+        self, item_id: int, material_id: str
+    ) -> bool:
+        """Set matched_material_id on an invoice item."""
+        async with get_transaction() as conn:
+            cursor = await conn.execute(
+                "UPDATE invoice_items SET matched_material_id = ? WHERE id = ?",
+                (material_id, item_id),
+            )
+            updated = cursor.rowcount > 0
+            if updated:
+                logger.info(
+                    "item_material_linked",
+                    item_id=item_id,
+                    material_id=material_id,
+                )
+            return updated
+
     async def get_items_for_indexing(
         self,
         last_item_id: int = 0,
@@ -445,6 +463,7 @@ class SQLiteInvoiceStore(IInvoiceStore):
             quantity=row["quantity"],
             unit_price=row["unit_price"],
             total_price=row["total_price"],
+            matched_material_id=row["matched_material_id"] if "matched_material_id" in row.keys() else None,
             row_type=RowType(row["row_type"]),
         )
 

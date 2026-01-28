@@ -1,5 +1,9 @@
 """Core domain entities."""
 
+from src.core.entities.company_document import (
+    CompanyDocument,
+    CompanyDocumentType,
+)
 from src.core.entities.document import (
     Chunk,
     Document,
@@ -8,6 +12,11 @@ from src.core.entities.document import (
     Page,
     PageType,
     SearchResult,
+)
+from src.core.entities.inventory import (
+    InventoryItem,
+    MovementType,
+    StockMovement,
 )
 from src.core.entities.invoice import (
     ArithmeticCheck,
@@ -21,6 +30,16 @@ from src.core.entities.invoice import (
     ParsingStatus,
     RowType,
 )
+from src.core.entities.local_sale import (
+    LocalSalesInvoice,
+    LocalSalesItem,
+)
+from src.core.entities.material import (
+    Material,
+    MaterialSynonym,
+    OriginConfidence,
+)
+from src.core.entities.reminder import Reminder
 from src.core.entities.session import (
     ChatSession,
     MemoryFact,
@@ -51,6 +70,22 @@ __all__ = [
     "DocumentStatus",
     "IndexingState",
     "SearchResult",
+    # Material entities
+    "Material",
+    "MaterialSynonym",
+    "OriginConfidence",
+    # Company document entities
+    "CompanyDocument",
+    "CompanyDocumentType",
+    # Reminder entities
+    "Reminder",
+    # Inventory entities
+    "InventoryItem",
+    "StockMovement",
+    "MovementType",
+    # Local sales entities
+    "LocalSalesInvoice",
+    "LocalSalesItem",
     # Session entities
     "ChatSession",
     "Message",

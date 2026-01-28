@@ -5,22 +5,31 @@ Invoice management endpoints.
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 
 from src.api.dependencies import (
     get_audit_invoice_use_case,
+    get_generate_proforma_pdf_use_case,
     get_inv_store,
+    get_mat_store,
     get_upload_invoice_use_case,
 )
 from src.application.dto.requests import AuditInvoiceRequest, UploadInvoiceRequest
 from src.application.dto.responses import (
     AuditFindingResponse,
     AuditResultResponse,
+    CatalogSuggestionResponse,
     ErrorResponse,
     InvoiceResponse,
     LineItemResponse,
 )
-from src.application.use_cases import AuditInvoiceUseCase, UploadInvoiceUseCase
-from src.infrastructure.storage.sqlite import SQLiteInvoiceStore
+from src.application.use_cases import (
+    AuditInvoiceUseCase,
+    GenerateProformaPdfUseCase,
+    UploadInvoiceUseCase,
+)
+from src.core.entities.invoice import RowType
+from src.infrastructure.storage.sqlite import SQLiteInvoiceStore, SQLiteMaterialStore
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
 
@@ -38,12 +47,14 @@ async def upload_invoice(
     vendor_hint: str | None = None,
     template_id: str | None = None,
     auto_audit: bool = True,
+    auto_catalog: bool = True,
     use_case: UploadInvoiceUseCase = Depends(get_upload_invoice_use_case),
 ) -> dict[str, Any]:
     """
     Upload and process an invoice.
 
-    Extracts text, parses invoice data, and optionally audits.
+    Extracts text, parses invoice data, optionally audits,
+    and optionally matches line items to materials catalog.
     """
     # Validate file type
     filename = file.filename or ""
@@ -67,6 +78,7 @@ async def upload_invoice(
         vendor_hint=vendor_hint,
         template_id=template_id,
         auto_audit=auto_audit,
+        auto_catalog=auto_catalog,
     )
 
     # Execute
@@ -107,6 +119,39 @@ async def audit_invoice(
         )
 
 
+@router.post(
+    "/{invoice_id}/proforma-pdf",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"model": ErrorResponse, "description": "Invoice or audit not found"},
+    },
+)
+async def generate_proforma_pdf(
+    invoice_id: str,
+    use_case: GenerateProformaPdfUseCase = Depends(get_generate_proforma_pdf_use_case),
+) -> Response:
+    """
+    Generate a proforma PDF for an invoice.
+
+    Returns the PDF file as a downloadable response.
+    """
+    try:
+        result = await use_case.execute(int(invoice_id))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+    return Response(
+        content=result.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{result.file_path}"',
+        },
+    )
+
+
 @router.get(
     "/{invoice_id}",
     response_model=InvoiceResponse,
@@ -117,8 +162,9 @@ async def audit_invoice(
 async def get_invoice(
     invoice_id: str,
     store: SQLiteInvoiceStore = Depends(get_inv_store),
+    mat_store: SQLiteMaterialStore = Depends(get_mat_store),
 ) -> InvoiceResponse:
-    """Get invoice by ID."""
+    """Get invoice by ID with catalog matching info."""
     try:
         invoice = await store.get_invoice(int(invoice_id))
     except (ValueError, TypeError):
@@ -133,20 +179,31 @@ async def get_invoice(
             detail=f"Invoice not found: {invoice_id}",
         )
 
-    return InvoiceResponse(
-        id=str(invoice.id) if invoice.id else "0",
-        document_id=str(invoice.doc_id) if invoice.doc_id else None,
-        invoice_number=invoice.invoice_no,
-        vendor_name=invoice.seller_name,
-        vendor_address=None,  # Not in entity
-        buyer_name=invoice.buyer_name,
-        invoice_date=invoice.invoice_date,
-        due_date=invoice.due_date,
-        subtotal=invoice.subtotal,
-        tax_amount=invoice.tax_amount,
-        total_amount=invoice.total_amount,
-        currency=invoice.currency,
-        line_items=[
+    line_items: list[LineItemResponse] = []
+    for item in invoice.items:
+        is_line = item.row_type == RowType.LINE_ITEM
+        unmatched = is_line and not item.matched_material_id
+
+        suggestions: list[CatalogSuggestionResponse] = []
+        if unmatched and item.item_name.strip():
+            try:
+                candidates = await mat_store.search_by_name(
+                    item.item_name, limit=5
+                )
+                suggestions = [
+                    CatalogSuggestionResponse(
+                        material_id=m.id or "",
+                        name=m.name,
+                        normalized_name=m.normalized_name,
+                        hs_code=m.hs_code,
+                        unit=m.unit,
+                    )
+                    for m in candidates
+                ]
+            except Exception:
+                pass  # FTS match may fail on short/odd queries
+
+        line_items.append(
             LineItemResponse(
                 description=item.description or item.item_name,
                 quantity=item.quantity,
@@ -154,12 +211,29 @@ async def get_invoice(
                 unit_price=item.unit_price,
                 total_price=item.total_price,
                 hs_code=item.hs_code,
-                reference=None,  # Not in entity
+                reference=None,
+                matched_material_id=item.matched_material_id,
+                needs_catalog=unmatched,
+                catalog_suggestions=suggestions,
             )
-            for item in invoice.items
-        ],
+        )
+
+    return InvoiceResponse(
+        id=str(invoice.id) if invoice.id else "0",
+        document_id=str(invoice.doc_id) if invoice.doc_id else None,
+        invoice_number=invoice.invoice_no,
+        vendor_name=invoice.seller_name,
+        vendor_address=None,
+        buyer_name=invoice.buyer_name,
+        invoice_date=invoice.invoice_date,
+        due_date=invoice.due_date,
+        subtotal=invoice.subtotal,
+        tax_amount=invoice.tax_amount,
+        total_amount=invoice.total_amount,
+        currency=invoice.currency,
+        line_items=line_items,
         calculated_total=invoice.calculated_total,
-        source_file=None,  # Not in entity
+        source_file=None,
         parsed_at=invoice.created_at,
         confidence=invoice.confidence,
     )

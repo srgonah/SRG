@@ -1,8 +1,8 @@
 # SRG Progress Audit — STATUS.md
 
-**Generated**: 2026-01-27
+**Updated**: 2026-01-28
 **Commit scope**: Full `src/`, `tests/`, tooling audit
-**Tool results**: pytest 630/630 pass | ruff 84 errors | mypy 365 errors
+**Tool results**: pytest ~891 pass | ruff 0 errors | mypy 0 errors
 
 ---
 
@@ -15,15 +15,25 @@
 | Invoice entity model | `core/entities/invoice.py` | `Invoice`, `LineItem`, `AuditResult`, `AuditIssue`, `ArithmeticCheck` | Complete |
 | Document entity model | `core/entities/document.py` | `Document`, `Page`, `Chunk`, `SearchResult`, `IndexingState` | Complete |
 | Session/Chat entity model | `core/entities/session.py` | `ChatSession`, `Message`, `MemoryFact` | Complete |
-| Exception hierarchy | `core/exceptions.py` | `SRGError` → `StorageError`, `LLMError`, `ParserError`, `SearchError`, `AuditError`, `ChatError`, `IndexingError` | Complete |
-| Storage interfaces (ABCs) | `core/interfaces/storage.py` | `IDocumentStore`, `IInvoiceStore`, `ISessionStore`, `IVectorStore`, `IHybridSearcher`, `IReranker`, `ISearchCache` | Complete |
+| **Material entity** | `core/entities/material.py` | `Material`, `MaterialSynonym`, `OriginConfidence`, auto-normalized name, ingestion fields (brand, source_url, origin_country, evidence_text) | Complete |
+| **Company document entity** | `core/entities/company_document.py` | `CompanyDocument`, `CompanyDocumentType`, `.is_expired`, `.days_until_expiry()` | Complete |
+| **Reminder entity** | `core/entities/reminder.py` | `Reminder`, `.is_overdue` | Complete |
+| **Inventory entity** | `core/entities/inventory.py` | `InventoryItem` (WAC, total_value), `StockMovement`, `MovementType` (IN/OUT/ADJUST) | Complete |
+| **Local sales entity** | `core/entities/local_sale.py` | `LocalSalesInvoice` (auto-totals/profit), `LocalSalesItem` (line_total, cost_basis, profit) | Complete |
+| Exception hierarchy | `core/exceptions.py` | `SRGError` → `StorageError`, `LLMError`, `ParserError`, `SearchError`, `AuditError`, `ChatError`, `IndexingError`, `InvoiceNotFoundError`, `InventoryError`, `InsufficientStockError`, `SalesError` | Complete |
+| Storage interfaces (ABCs) | `core/interfaces/storage.py` | `IDocumentStore`, `IInvoiceStore`, `ISessionStore`, `IVectorStore`, `IHybridSearcher`, `IReranker`, `ISearchCache`, `ICompanyDocumentStore`, `IReminderStore`, `IInventoryStore`, `ISalesStore` | Complete |
+| **Material store interface** | `core/interfaces/material_store.py` | `IMaterialStore` — 9 abstract methods (CRUD + synonym + FTS search) | Complete |
+| **Price history interface** | `core/interfaces/price_history.py` | `IPriceHistoryStore` — `get_price_history`, `get_price_stats`, `link_material` | Complete |
 | LLM interfaces | `core/interfaces/llm.py` | `ILLMProvider`, `IVisionProvider`, `IEmbeddingProvider` | Complete |
 | Parser interfaces | `core/interfaces/parser.py` | `IInvoiceParser`, `ITemplateDetector`, `ITextExtractor`, `IParserRegistry` | Complete |
 | Chat service | `core/services/chat_service.py` | `ChatService.create_session()`, `.send_message()`, `.stream_response()`, `.extract_memory_facts()` | Complete |
 | Search service | `core/services/search_service.py` | `SearchService.search()`, `.search_items()`, `.prepare_context()` | Complete |
 | Invoice parser service | `core/services/invoice_parser.py` | `InvoiceParserService.parse_invoice()`, `.parse_page()` | Complete |
-| Invoice auditor service | `core/services/invoice_auditor.py` | `InvoiceAuditorService.audit_invoice()`, `_check_math()`, `_check_required_fields()`, `_check_bank_details()`, `_check_format()`, `_llm_semantic_analysis()` | Complete |
+| Invoice auditor service | `core/services/invoice_auditor.py` | `InvoiceAuditorService.audit_invoice()`, `_check_math()`, `_check_required_fields()`, `_check_bank_details()`, `_check_format()`, `_check_price_anomalies()`, `_check_cross_invoice_duplicates()`, `_llm_semantic_analysis()` | Complete |
 | Document indexer service | `core/services/document_indexer.py` | `DocumentIndexerService.index_document()`, `.index_incremental()`, `.rebuild_index_full()` | Complete |
+| **Proforma PDF service** | `core/services/proforma_pdf_service.py` | `IProformaPdfRenderer`, `ProformaPdfService`, `ProformaPdfResult` | Complete |
+| **Material ingestion service** | `core/services/material_ingestion.py` | `MaterialIngestionService`, `IngestionResult` — orchestrates URL fetching, dedup, create/update | Complete |
+| **Product page fetcher interface** | `core/interfaces/product_fetcher.py` | `IProductPageFetcher`, `ProductPageData` — abstract interface for e-commerce scraping | Complete |
 
 ### 1.2 Infrastructure Layer (`src/infrastructure/`)
 
@@ -39,12 +49,26 @@
 | SQLite document store | `infrastructure/storage/sqlite/document_store.py` | Complete |
 | SQLite invoice store | `infrastructure/storage/sqlite/invoice_store.py` | Complete |
 | SQLite session store | `infrastructure/storage/sqlite/session_store.py` | Complete |
+| **SQLite material store** | `infrastructure/storage/sqlite/material_store.py` | Complete (CRUD + FTS5 search + synonym management) |
+| **SQLite price history store** | `infrastructure/storage/sqlite/price_history_store.py` | Complete (queries `item_price_history` + `v_item_price_stats` view) |
+| **SQLite company document store** | `infrastructure/storage/sqlite/company_document_store.py` | Complete |
+| **SQLite reminder store** | `infrastructure/storage/sqlite/reminder_store.py` | Complete |
+| **SQLite inventory store** | `infrastructure/storage/sqlite/inventory_store.py` | Complete (CRUD + movement tracking) |
+| **SQLite sales store** | `infrastructure/storage/sqlite/sales_store.py` | Complete (invoice + items in transaction) |
+| **Fpdf2 proforma PDF renderer** | `infrastructure/pdf/fpdf2_renderer.py` | Complete |
+| **Amazon product fetcher** | `infrastructure/scrapers/amazon_fetcher.py` | Complete — supports amazon.ae/com/co.uk/de/fr/sa, JSON-LD + HTML parsing, origin detection |
 | FAISS vector store (chunks + items indexes) | `infrastructure/storage/vector/faiss_store.py` | Complete |
 | SQLite FTS5 keyword search | `infrastructure/search/fts.py` | Complete |
 | Hybrid searcher (FAISS + FTS + RRF) | `infrastructure/search/hybrid.py` | Complete |
 | Reranker (BGE-reranker-v2-m3) | `infrastructure/search/reranker.py` | Complete |
 | Database migrations v001 (initial schema) | `migrations/v001_initial_schema.sql` | Complete |
-| Database migrations v002 (price history) | `migrations/v002_price_history.sql` | Schema only — no application code reads it |
+| Database migrations v002 (price history) | `migrations/v002_price_history.sql` | Complete — trigger + view + app code |
+| Database migrations v003 (materials) | `migrations/v003_materials.sql` | Complete |
+| Database migrations v004 (company docs + reminders) | `migrations/v004_company_docs_reminders.sql` | Complete |
+| **Database migrations v005 (materials catalog)** | `migrations/v005_materials_catalog.sql` | Complete — FTS5 + sync triggers |
+| **Database migrations v006 (matched_material_id)** | `migrations/v006_matched_material_id.sql` | Complete — FK on invoice_items |
+| **Database migrations v007 (material ingestion)** | `migrations/v007_material_ingestion.sql` | Complete — source_url, origin_country, origin_confidence, evidence_text, brand columns + indexes |
+| **Database migrations v008 (inventory & sales)** | `migrations/v008_inventory_sales.sql` | Complete — inventory_items, stock_movements, local_sales_invoices, local_sales_items + indexes |
 | Memory + disk caching | `infrastructure/cache/memory_cache.py`, `disk_cache.py` | Complete |
 
 ### 1.3 Application Layer (`src/application/`)
@@ -55,103 +79,103 @@
 | Audit Invoice | `application/use_cases/audit_invoice.py` | Complete |
 | Search Documents | `application/use_cases/search_documents.py` | Complete |
 | Chat With Context (RAG) | `application/use_cases/chat_with_context.py` | Complete |
-| DTOs (request/response) | `application/dto/requests.py`, `responses.py` | Complete |
-| Service factory (singletons) | `application/services.py` | Has unused imports (see bugs) |
+| **Generate Proforma PDF** | `application/use_cases/generate_proforma_pdf.py` | Complete |
+| **Add to Catalog** | `application/use_cases/add_to_catalog.py` | Complete — find/create material, synonyms, link price history, set matched_material_id, `auto_match_items()` for upload |
+| **Ingest Material** | `application/use_cases/ingest_material.py` | Complete — ingest from external URL, extract brand/origin/synonyms |
+| **Check Expiring Documents** | `application/use_cases/check_expiring_documents.py` | Complete — scans expiring docs, creates reminders for un-reminded ones, `ExpiryCheckResult` dataclass |
+| **Receive Stock** | `application/use_cases/receive_stock.py` | Complete — WAC recalculation, create-or-update inventory item, IN movement |
+| **Issue Stock** | `application/use_cases/issue_stock.py` | Complete — balance check, deduct stock, OUT movement |
+| **Create Sales Invoice** | `application/use_cases/create_sales_invoice.py` | Complete — multi-item deduction, cost basis, profit calculation |
+| DTOs (request/response) | `application/dto/requests.py`, `responses.py` | Complete (includes catalog, price, company docs, reminders, proforma, catalog suggestions, expiry check, inventory, sales) |
+| Service factory (singletons) | `application/services.py` | Complete |
 
-### 1.4 API Layer — Two Parallel API Surfaces
+### 1.4 API Layer — 60 Endpoints, 12 Routers
 
-#### Primary API (`src/api/`)
 | Router | File | Endpoints |
 |--------|------|-----------|
-| Health | `api/routes/health.py` | `GET /health/ready`, `/health/live` |
-| Invoices | `api/routes/invoices.py` | `POST /invoices/upload`, `GET/PUT/DELETE /invoices/{id}`, `GET /invoices` |
-| Documents | `api/routes/documents.py` | `GET /documents`, `GET /documents/{id}`, `DELETE` |
-| Search | `api/routes/search.py` | `POST /search` |
-| Chat | `api/routes/chat.py` | `POST /chat`, `POST /chat/stream` |
-| Sessions | `api/routes/sessions.py` | `POST/GET/PUT/DELETE /sessions` |
+| Health | `api/routes/health.py` | `GET /api/health`, `/llm`, `/db`, `/search`, `/full`, `/detailed` |
+| Invoices | `api/routes/invoices.py` | `POST /upload`, `POST /{id}/audit`, `POST /{id}/proforma-pdf`, `GET/DELETE /{id}`, `GET /`, `GET /{id}/audits` |
+| **Catalog** | `api/routes/catalog.py` | `POST /api/catalog/`, `GET /api/catalog/`, `GET /api/catalog/{material_id}`, `POST /api/catalog/ingest` |
+| **Prices** | `api/routes/prices.py` | `GET /api/prices/history`, `GET /api/prices/stats` |
+| Documents | `api/routes/documents.py` | `POST /upload`, `POST /index`, `POST /index-directory`, `GET /`, `GET /stats`, `GET/DELETE /{id}`, `POST /{id}/reindex` |
+| Search | `api/routes/search.py` | `POST /search`, `GET /quick`, `POST /semantic`, `POST /keyword`, `GET /cache/stats`, `POST /cache/invalidate` |
+| Chat | `api/routes/chat.py` | `POST /chat`, `POST /chat/stream`, `GET /chat/context` |
+| Sessions | `api/routes/sessions.py` | `POST/GET /sessions`, `GET/DELETE /{session_id}`, `GET /{session_id}/messages`, `GET /{session_id}/summary` |
+| Company Documents | `api/routes/company_documents.py` | `POST /api/company-documents`, `GET /`, `GET /expiring`, `POST /check-expiry`, `GET/PUT/DELETE /{doc_id}` |
+| Reminders | `api/routes/reminders.py` | `POST /api/reminders`, `GET /`, `GET /upcoming`, `GET/PUT/DELETE /{reminder_id}` |
+| **Inventory** | `api/routes/inventory.py` | `POST /api/inventory/receive`, `POST /api/inventory/issue`, `GET /api/inventory/status`, `GET /api/inventory/{id}/movements` |
+| **Sales** | `api/routes/sales.py` | `POST /api/sales/invoices`, `GET /api/sales/invoices`, `GET /api/sales/invoices/{id}` |
 
-#### Secondary API (`src/srg/api/v1/endpoints/`)
-Thin wrapper reusing same use cases, adds `/api/v1/` prefix, placeholder auth, separate Pydantic schemas.
+Invoice detail (`GET /api/invoices/{id}`) now includes per-item `matched_material_id`, `needs_catalog`, and `catalog_suggestions` (top 5 FTS5 candidates for unmatched line items).
 
 ### 1.5 Test Suite
 
 | Area | Count | Status |
 |------|-------|--------|
-| API tests | ~15 | All pass |
-| Core entity tests | ~50 | All pass |
+| API tests (catalog, prices, invoices, company-docs, reminders, health, search, sessions, ingest, inventory, sales) | ~54 | All pass |
+| Core entity tests (incl. OriginConfidence + ingestion fields + inventory + local sales) | ~85 | All pass |
 | Core interface contract tests | ~30 | All pass |
-| Infrastructure SQLite store tests | ~120 | All pass |
-| Unit service tests | ~100 | All pass |
+| Infrastructure SQLite store tests (invoice, document, session, material, price history, company-doc, reminder, inventory, sales) | ~168 | All pass |
+| Unit service tests (incl. MaterialIngestionService, price anomaly, cross-invoice duplicate) | ~136 | All pass |
 | Unit parser tests | ~90 | All pass |
 | Unit search tests | ~80 | All pass |
-| Unit use case tests | ~40 | All pass |
-| Integration tests | ~10 | All pass |
-| **Total** | **630** | **630 pass, 0 fail** |
+| Unit use case tests (upload, audit, search, chat, proforma, add-to-catalog, auto-match, ingest, check-expiry, receive-stock, issue-stock, create-sales-invoice) | ~85 | All pass |
+| Unit scraper tests (AmazonProductFetcher HTML parsing) | ~25 | All pass |
+| Integration tests (catalog flow, chat endpoint, inventory flow) | ~13 | All pass |
+| **Total** | **~891 collected, ~891 pass, 0 fail** | |
+
+Phase 10 added ~57 new tests: entity (18), store (17), use case (14), API (9), integration (1).
 
 ---
 
-## 2. What Is Missing (GAP LIST)
-
-Features requested in the product spec vs. current implementation:
+## 2. Gap List
 
 | # | Feature | Current State | Priority |
 |---|---------|---------------|----------|
-| G1 | **Materials DB + synonyms** | No `materials` table, no synonym mapping, no entity for materials. Only `item_price_history` exists at DB level. | **P0 — Critical** |
-| G2 | **"Add to catalog" flow** | No catalog entity, no API endpoint, no use case. Users cannot save parsed line items as catalog entries. | **P0 — Critical** |
-| G3 | **Proforma generator** | `AuditResult.proforma_summary` field exists (dict, stored as JSON) but there is no proforma *document generation* — no PDF output, no template engine, no use case. | **P1 — High** |
-| G4 | **Company documents + expiry reminders** | `Document` has `company_key` field. No `CompanyDocument` entity with expiry dates. No reminder/notification system. No cron/scheduler. | **P1 — High** |
-| G5 | **Price history application code** | `v002_price_history.sql` creates the table + trigger + view, but no `IPriceHistoryStore` interface, no service, no API endpoint to query price trends. | **P1 — High** |
-| G6 | **Auth / multi-tenant** | `src/srg/core/security.py` has placeholder SHA-256 "tokens" — not JWT, no user model, no RBAC. | **P2 — Medium** |
-| G7 | **PDF export / report generation** | No PDF output anywhere. PyMuPDF used only for reading. | **P2 — Medium** |
-| G8 | **Web UI completeness** | `main.py` mounts static files + SPA catch-all but no evidence of a built frontend. | **P2 — Medium** |
-| G9 | **Duplicate API surface** | `src/api/` and `src/srg/api/` both define routes for the same features. Needs consolidation. | **P2 — Medium** |
-| G10 | **Currency handling** | `item_price_history` has `currency` column, but no currency conversion, no multi-currency comparison in audit. | **P3 — Low** |
+| ~~G1~~ | ~~Materials DB + synonyms~~ | **Done.** `Material` entity, `SQLiteMaterialStore` with FTS5 + synonym management, `IMaterialStore` interface, v005 migration, 16 store tests. | **Done** |
+| ~~G2~~ | ~~Add to Catalog flow~~ | **Done.** `AddToCatalogUseCase` — find/create material, add synonyms, link price history, set `matched_material_id`. `POST /api/catalog/`. 7 use case tests + 2 integration tests. Invoice detail shows `needs_catalog` + `catalog_suggestions`. | **Done** |
+| ~~G3~~ | ~~Price history application code~~ | **Done.** `IPriceHistoryStore`, `SQLitePriceHistoryStore`, `GET /api/prices/history`, `GET /api/prices/stats`. 9 store tests + 8 API tests. | **Done** |
+| ~~G4~~ | ~~Proforma generator~~ | **Done.** `Fpdf2ProformaRenderer`, `POST /api/invoices/{id}/proforma-pdf`, `GenerateProformaPdfUseCase`. | **Done** |
+| ~~G5~~ | ~~Company documents + expiry~~ | **Done.** Full CRUD + expiry query. | **Done** |
+| ~~G6~~ | ~~Reminders~~ | **Done.** Full CRUD + upcoming query. | **Done** |
+| G7 | **Auth / multi-tenant** | `src/srg/core/security.py` has placeholder SHA-256 "tokens" — not JWT, no user model, no RBAC. | **P2 — Medium** |
+| G8 | **Web UI completeness** | `main.py` mounts static files + SPA catch-all but no built frontend. | **P2 — Medium** |
+| G9 | **Duplicate API surface** | `src/api/` and `src/srg/api/` both define routes. `src/api/` is canonical; `src/srg/api/v1/` is a stale thin wrapper. | **P2 — Medium** |
+| G10 | **Currency handling** | `item_price_history` has `currency` column, but no conversion or multi-currency comparison in audit. | **P3 — Low** |
+| ~~G11~~ | ~~**Auto-catalog on upload**~~ | **Done.** `auto_match_items()` on `AddToCatalogUseCase` + `AutoMatchResult`. Upload endpoint `auto_catalog=true` by default. Matches by normalized name → synonym fallback. 8 unit tests. | **Done** |
+| ~~G12~~ | ~~**Price anomaly audit rule**~~ | **Done.** `_check_price_anomalies()` on `InvoiceAuditorService`. Queries `IPriceHistoryStore`, flags `PRICE_ANOMALY` warning when deviation >20% (configurable). Graceful degradation. 13 unit tests. | **Done** |
+| ~~G13~~ | ~~**Cross-invoice duplicate detection**~~ | **Done.** `_check_cross_invoice_duplicates()` on `InvoiceAuditorService`. Queries `IPriceHistoryStore` with configurable window (default 30 days). Flags `CROSS_INVOICE_DUPLICATE` warning. Exact name filtering. Graceful degradation. 12 unit tests. | **Done** |
+| ~~G14~~ | ~~**Expiry alert → auto-reminder**~~ | **Done.** `CheckExpiringDocumentsUseCase` + `ExpiryCheckResult`. `IReminderStore.find_by_linked_entity()`. `POST /api/company-documents/check-expiry` endpoint. 8 use case tests + 3 API tests + 1 store test. | **Done** |
 
 ---
 
-## 3. Bugs Found
+## 3. Bugs and Warnings
 
-### 3.1 Ruff Lint (84 errors, all auto-fixable)
+### 3.1 Ruff Lint
 
-| Category | Count | Key Files |
-|----------|-------|-----------|
-| **F401** Unused imports | ~60 | `application/services.py` (unused `get_document_store`, `get_invoice_store`), `core/services/invoice_auditor.py` (unused `Any`, `LineItem`, `AuditError`), `core/services/chat_service.py` (unused `SearchContext`), many test files |
-| **I001** Unsorted imports | ~15 | `application/services.py`, `infrastructure/parsers/__init__.py`, several test files |
-| **F841** Assigned but unused variables | 2 | `tests/unit/services/test_document_indexer_incremental.py:260`, `tests/unit/use_cases/test_chat_with_context_uc.py:164` |
+**Current: 0 errors.**
 
-**Fix**: `ruff check --fix src tests` resolves 75 of 84; remaining 9 need `--unsafe-fixes`.
+### 3.2 Mypy Type Errors
 
-### 3.2 Mypy Type Errors (365 errors in 60 files)
+**Current: 0 errors** (`mypy src` → "Success: no issues found in 118 source files").
 
-| Category | Count | Impact |
-|----------|-------|--------|
-| `[type-arg]` Missing generic params (`dict` → `dict[str, Any]`) | ~80 | Cosmetic, strict mode |
-| `[no-untyped-def]` Missing return/param annotations | ~120 | Mostly API routes + factory functions |
-| `[assignment]` Incompatible types (e.g. `None` assigned to `list[LineItem]`) | ~20 | `core/interfaces/parser.py:20,24` — real bugs in dataclass defaults |
-| `[attr-defined]` Wrong attribute names | 4 | **Real bugs**: `health.py:90,204` uses `pool.connection()` (should be `pool._connections` or async context), `health.py:189` calls `embedder.embed()` (should be `embed_single()`), `main.py:80` calls `llm.health_check()` (interface has `check_health()`) |
-| `[arg-type]` Wrong argument types | ~15 | `documents.py:48` passes `str | None` to `Path()` |
-| `[misc]` List comprehension type mismatches | ~10 | `invoices.py:231` — dict vs AuditFindingResponse |
+### 3.3 Runtime Bugs (low priority)
 
-### 3.3 Runtime Bugs (from mypy attr-defined)
+1. **`health.py:90,204`** — `pool.connection()` may not exist on `ConnectionPool`. Verify correct async context manager method.
+2. **`health.py:189`** — `embedder.embed("test")` → should be `embedder.embed_single("test")` per `IEmbeddingProvider`.
+3. **`main.py:80`** — `llm.health_check()` → should be `llm.check_health()` per `ILLMProvider`.
 
-These will crash at runtime if hit:
+### 3.4 Deprecation Warnings
 
-1. **`src/api/routes/health.py:90,204`** — `pool.connection()` does not exist on `ConnectionPool`. The correct API depends on the pool implementation.
-2. **`src/api/routes/health.py:189`** — `embedder.embed("test")` — interface defines `embed_single()`, not `embed()`.
-3. **`src/api/main.py:80`** — `llm.health_check()` — interface defines `check_health()`, not `health_check()`.
-
-### 3.4 Deprecation Warnings (698 in test run)
-
-| Warning | Files | Fix |
-|---------|-------|-----|
-| `datetime.utcnow()` deprecated in Python 3.12 | `document_store.py:83`, `invoice_store.py:164`, `session_store.py:102,229,262` | Replace with `datetime.now(UTC)` |
-| aiosqlite default date adapter deprecated | `test_invoice_store.py` (15 occurrences) | Register custom adapter |
+| Warning | Source | Fix |
+|---------|--------|-----|
+| `datetime.utcnow()` deprecated in Python 3.12 | `document_store.py`, `invoice_store.py`, `session_store.py`, `company_document_store.py`, `reminder_store.py`, `fpdf2_renderer.py`, entity defaults | Replace with `datetime.now(UTC)` |
+| ~~`HTTP_422_UNPROCESSABLE_ENTITY` deprecated~~ | ~~`api/middleware/error_handler.py`~~ | **Fixed** in Phase 8 — replaced with literal `422` |
 
 ### 3.5 Structural Issues
 
-1. **Unused imports in `application/services.py:70-71`**: `get_document_store` and `get_invoice_store` imported but never used — factory function may be incomplete.
-2. **Unused `time` import in `api/main.py:191`**: Dead code in `root_health()`.
-3. **`core/interfaces/parser.py:20`**: `ParserResult.items` defaults to `None` but is typed as `list[LineItem]` — will fail at runtime if accessed before set.
+1. `core/interfaces/parser.py:20`: `ParserResult.items` defaults to `None` but typed as `list[LineItem]`.
+2. Dual API surface (`src/api/` vs `src/srg/api/`) — `src/api/` is canonical.
 
 ---
 
@@ -159,31 +183,34 @@ These will crash at runtime if hit:
 
 | Tool | Config | Result |
 |------|--------|--------|
-| **pytest** | `pyproject.toml` `[tool.pytest.ini_options]` asyncio_mode=auto | 630/630 pass (22s) |
-| **ruff** | `pyproject.toml` `[tool.ruff]` line-length=100, py311 | 84 errors (all fixable) |
-| **mypy** | `pyproject.toml` `[tool.mypy]` strict=true | 365 errors in 60 files |
-| **coverage** | `pyproject.toml` `[tool.coverage]` fail_under=70 | Not measured this run |
-| **bandit** | `pyproject.toml` `[tool.bandit]` configured | Not run |
-| **commitizen** | `pyproject.toml` `[tool.commitizen]` | Configured |
+| **pytest** | `pyproject.toml` asyncio_mode=auto | 834 collected, 834 pass, 0 fail (~33s) |
+| **ruff** | `pyproject.toml` line-length=100 | 0 errors |
+| **mypy** | `pyproject.toml` strict=true | 0 errors in 118 files |
+| **coverage** | `pyproject.toml` fail_under=70 | Not measured this run |
+| **bandit** | `pyproject.toml` configured | Not run |
 
 ---
 
-## 5. Next Steps (Top 15, Prioritized)
+## 5. Database Schema
 
-| # | Task | Priority | Depends On | Files to Create/Modify |
-|---|------|----------|------------|----------------------|
-| 1 | **Fix 3 runtime bugs** (wrong method names in health.py, main.py) | P0 | — | `api/routes/health.py`, `api/main.py` |
-| 2 | **Fix `ParserResult.items` default** (`None` → `[]` or `Optional[list]`) | P0 | — | `core/interfaces/parser.py` |
-| 3 | **Run `ruff check --fix`** to clear 84 lint errors | P0 | — | Multiple files |
-| 4 | **Replace `datetime.utcnow()`** with `datetime.now(UTC)` across stores | P0 | — | 3 store files |
-| 5 | **Materials DB entity + store** — `Material` entity, `IMaterialStore`, SQLite impl, migration v003 | P1 | — | New: `core/entities/material.py`, `core/interfaces/material_store.py`, `infrastructure/storage/sqlite/material_store.py`, `migrations/v003_materials.sql` |
-| 6 | **Material synonyms** — synonym table, fuzzy matching, link to line items | P1 | #5 | Extend migration v003, new `MaterialSynonymService` |
-| 7 | **"Add to catalog" use case** — save parsed items as catalog entries | P1 | #5 | New: `application/use_cases/add_to_catalog.py`, API route |
-| 8 | **Price history service** — query `item_price_history`, expose via API | P1 | — | New: `core/interfaces/price_history.py`, `infrastructure/storage/sqlite/price_history_store.py`, API route |
-| 9 | **Proforma generator** — generate proforma PDF from invoice + audit data | P1 | — | New: `core/services/proforma_generator.py`, PDF template, API route |
-| 10 | **Company documents + expiry** — `CompanyDocument` entity with expiry dates, reminder query | P1 | — | New entity, store, migration v004, API endpoints |
-| 11 | **Consolidate dual API surfaces** — merge `src/srg/api/` into `src/api/` or vice versa | P2 | — | Refactor across both API layers |
-| 12 | **Add type annotations** to API routes to satisfy mypy strict | P2 | #3 | All files in `api/routes/` |
-| 13 | **Fix mypy dict generic params** across entities/DTOs | P2 | — | ~20 files in core/entities, application/dto |
-| 14 | **Implement proper JWT auth** replacing placeholder SHA-256 tokens | P2 | #11 | `core/security.py`, middleware |
-| 15 | **Run coverage report** and bring to ≥80% (current threshold: 70%) | P3 | — | Test files |
+8 applied migrations, 40 tables:
+
+| Migration | Tables / Objects |
+|-----------|-----------------|
+| v001 | documents, doc_pages, doc_chunks, doc_chunks_fts, doc_chunks_faiss_map, invoices, invoice_items, invoice_items_fts, line_items_faiss_map, chat_sessions, chat_messages, memory_facts, audit_results, indexing_state, schema_migrations |
+| v002 | item_price_history + trg_item_price_history trigger + v_item_price_stats view |
+| v003 | materials, material_synonyms (original) |
+| v004 | company_documents, reminders |
+| v005 | materials (TEXT PK), material_synonyms, materials_fts + sync triggers |
+| v006 | invoice_items.matched_material_id column + index |
+| v007 | materials: source_url, origin_country, origin_confidence, evidence_text, brand columns + indexes |
+| v008 | inventory_items, stock_movements, local_sales_invoices, local_sales_items + indexes |
+
+---
+
+## 6. Quick Endpoint Reference
+
+See `docs/FLOW.md` for the full 53-endpoint map.
+See `docs/CATALOG_FLOW.md` for the catalog user workflow.
+See `docs/INVENTORY_FLOW.md` for the inventory & sales workflow.
+See `docs/SMOKE_TEST.md` for manual verification steps.

@@ -14,8 +14,15 @@ from src.application.services import (
     get_search_service,
 )
 from src.application.use_cases import (
+    AddToCatalogUseCase,
     AuditInvoiceUseCase,
     ChatWithContextUseCase,
+    CheckExpiringDocumentsUseCase,
+    CreateSalesInvoiceUseCase,
+    GenerateProformaPdfUseCase,
+    IngestMaterialUseCase,
+    IssueStockUseCase,
+    ReceiveStockUseCase,
     SearchDocumentsUseCase,
     UploadInvoiceUseCase,
 )
@@ -30,11 +37,23 @@ from src.core.services import (
 )
 from src.infrastructure.llm import get_llm_provider
 from src.infrastructure.storage.sqlite import (
+    SQLiteCompanyDocumentStore,
     SQLiteDocumentStore,
+    SQLiteInventoryStore,
     SQLiteInvoiceStore,
+    SQLiteMaterialStore,
+    SQLitePriceHistoryStore,
+    SQLiteReminderStore,
+    SQLiteSalesStore,
     SQLiteSessionStore,
+    get_company_document_store,
     get_document_store,
+    get_inventory_store,
     get_invoice_store,
+    get_material_store,
+    get_price_history_store,
+    get_reminder_store,
+    get_sales_store,
     get_session_store,
 )
 
@@ -106,6 +125,81 @@ async def get_inv_store() -> SQLiteInvoiceStore:
 async def get_sess_store() -> SQLiteSessionStore:
     """Get session store."""
     return await get_session_store()
+
+
+# Catalog dependencies
+async def get_mat_store() -> SQLiteMaterialStore:
+    """Get material store."""
+    return await get_material_store()
+
+
+async def get_price_store() -> SQLitePriceHistoryStore:
+    """Get price history store."""
+    return await get_price_history_store()
+
+
+def get_add_to_catalog_use_case() -> AddToCatalogUseCase:
+    """Get add to catalog use case."""
+    return AddToCatalogUseCase()
+
+
+# Company document store dependency
+async def get_company_doc_store() -> SQLiteCompanyDocumentStore:
+    """Get company document store."""
+    return await get_company_document_store()
+
+
+# Reminder store dependency
+async def get_rem_store() -> SQLiteReminderStore:
+    """Get reminder store."""
+    return await get_reminder_store()
+
+
+# Proforma PDF use case dependency
+def get_generate_proforma_pdf_use_case() -> GenerateProformaPdfUseCase:
+    """Get generate proforma PDF use case."""
+    return GenerateProformaPdfUseCase()
+
+
+# Ingestion use case dependency
+def get_ingest_material_use_case() -> IngestMaterialUseCase:
+    """Get ingest material use case."""
+    return IngestMaterialUseCase()
+
+
+# Expiry check use case dependency
+def get_check_expiring_documents_use_case() -> CheckExpiringDocumentsUseCase:
+    """Get check expiring documents use case."""
+    return CheckExpiringDocumentsUseCase()
+
+
+# Inventory store dependency
+async def get_inv_item_store() -> SQLiteInventoryStore:
+    """Get inventory store."""
+    return await get_inventory_store()
+
+
+# Sales store dependency
+async def get_sales_inv_store() -> SQLiteSalesStore:
+    """Get sales store."""
+    return await get_sales_store()
+
+
+# Inventory use case dependencies
+def get_receive_stock_use_case() -> ReceiveStockUseCase:
+    """Get receive stock use case."""
+    return ReceiveStockUseCase()
+
+
+def get_issue_stock_use_case() -> IssueStockUseCase:
+    """Get issue stock use case."""
+    return IssueStockUseCase()
+
+
+# Sales use case dependency
+def get_create_sales_invoice_use_case() -> CreateSalesInvoiceUseCase:
+    """Get create sales invoice use case."""
+    return CreateSalesInvoiceUseCase()
 
 
 # LLM dependency

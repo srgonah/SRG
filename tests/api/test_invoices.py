@@ -41,9 +41,8 @@ def test_upload_invoice_invalid_file_type(client: TestClient, api_prefix: str):
 
     response = client.post(f"{api_prefix}/invoices/upload", files=files)
     assert response.status_code == 400
-    # Error message is in 'error' field (from error handler middleware)
     data = response.json()
-    assert "Unsupported file type" in (data.get("error") or data.get("detail") or "")
+    assert "Unsupported file type" in (data.get("message") or data.get("error") or data.get("detail") or "")
 
 
 def test_upload_invoice_empty_file(client: TestClient, api_prefix: str):
@@ -52,9 +51,8 @@ def test_upload_invoice_empty_file(client: TestClient, api_prefix: str):
 
     response = client.post(f"{api_prefix}/invoices/upload", files=files)
     assert response.status_code == 400
-    # Error message is in 'error' field (from error handler middleware)
     data = response.json()
-    assert "Empty file" in (data.get("error") or data.get("detail") or "")
+    assert "Empty file" in (data.get("message") or data.get("error") or data.get("detail") or "")
 
 
 def test_delete_invoice_not_found(client: TestClient, api_prefix: str):

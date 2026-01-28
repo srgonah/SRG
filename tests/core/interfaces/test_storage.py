@@ -121,6 +121,7 @@ class TestIInvoiceStoreInterface:
             "get_audit_result",
             "list_audit_results",
             "get_items_for_indexing",
+            "update_item_material_id",
         }
         actual = set(IInvoiceStore.__abstractmethods__)
         assert expected == actual

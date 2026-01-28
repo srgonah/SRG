@@ -17,10 +17,16 @@ from starlette.responses import Response
 from src.api.middleware import ErrorHandlerMiddleware, LoggingMiddleware
 from src.api.middleware.error_handler import setup_exception_handlers
 from src.api.routes import (
+    catalog_router,
     chat_router,
+    company_documents_router,
     documents_router,
     health_router,
+    inventory_router,
     invoices_router,
+    prices_router,
+    reminders_router,
+    sales_router,
     search_router,
     sessions_router,
 )
@@ -158,6 +164,12 @@ def create_app() -> FastAPI:
     app.include_router(search_router)
     app.include_router(chat_router)
     app.include_router(sessions_router)
+    app.include_router(catalog_router)
+    app.include_router(prices_router)
+    app.include_router(company_documents_router)
+    app.include_router(reminders_router)
+    app.include_router(inventory_router)
+    app.include_router(sales_router)
 
     # Mount static files for web UI
     static_dir = Path(__file__).parent.parent.parent / "static"

@@ -38,6 +38,8 @@ class UploadResult:
     document: Document
     audit_result: AuditResult | None = None
     warnings: list[str] = field(default_factory=list)
+    auto_catalog_matched: int = 0
+    auto_catalog_unmatched: int = 0
 
     def __post_init__(self) -> None:
         if not self.warnings:
@@ -170,11 +172,29 @@ class UploadInvoiceUseCase:
                 audit_result = await auditor.audit_invoice(invoice)  # type: ignore[arg-type]
                 await inv_store.save_audit_result(audit_result)  # type: ignore[attr-defined]
 
+            # Optional auto-catalog matching
+            catalog_matched = 0
+            catalog_unmatched = 0
+            if request.auto_catalog and invoice.id:
+                try:
+                    from src.application.use_cases.add_to_catalog import (
+                        AddToCatalogUseCase,
+                    )
+
+                    catalog_uc = AddToCatalogUseCase()
+                    match_result = await catalog_uc.auto_match_items(invoice.id)
+                    catalog_matched = match_result.matched
+                    catalog_unmatched = match_result.unmatched
+                except Exception as e:
+                    logger.warning("auto_catalog_failed", error=str(e))
+                    warnings.append(f"Auto-catalog matching failed: {e}")
+
             logger.info(
                 "upload_invoice_complete",
                 invoice_id=invoice.id,  # type: ignore[attr-defined]
                 items=len(invoice.items or []),
                 audited=audit_result is not None,
+                catalog_matched=catalog_matched,
             )
 
             return UploadResult(
@@ -182,6 +202,8 @@ class UploadInvoiceUseCase:
                 document=document,  # type: ignore[arg-type]
                 audit_result=audit_result,
                 warnings=warnings,
+                auto_catalog_matched=catalog_matched,
+                auto_catalog_unmatched=catalog_unmatched,
             )
 
         finally:
@@ -243,6 +265,13 @@ class UploadInvoiceUseCase:
             "document_id": result.document.id,
             "warnings": result.warnings,
         }
+
+        # Auto-catalog info
+        if result.auto_catalog_matched or result.auto_catalog_unmatched:
+            response["catalog"] = {
+                "matched": result.auto_catalog_matched,
+                "unmatched": result.auto_catalog_unmatched,
+            }
 
         if result.audit_result:
             ar = result.audit_result

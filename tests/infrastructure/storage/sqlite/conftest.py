@@ -1,7 +1,7 @@
 """Pytest fixtures for SQLite storage tests."""
 
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -16,6 +16,8 @@ from src.core.entities import (
     BankDetails,
     ChatSession,
     Chunk,
+    CompanyDocument,
+    CompanyDocumentType,
     Document,
     DocumentStatus,
     Invoice,
@@ -28,6 +30,7 @@ from src.core.entities import (
     Page,
     PageType,
     ParsingStatus,
+    Reminder,
     RowType,
     SessionStatus,
 )
@@ -171,6 +174,7 @@ async def initialized_db(temp_db_path: Path) -> AsyncGenerator[Path, None]:
                 quantity REAL DEFAULT 0,
                 unit_price REAL DEFAULT 0,
                 total_price REAL DEFAULT 0,
+                matched_material_id TEXT,
                 row_type TEXT DEFAULT 'line_item'
             )
         """)
@@ -270,6 +274,219 @@ async def initialized_db(temp_db_path: Path) -> AsyncGenerator[Path, None]:
                 updated_at TEXT DEFAULT (datetime('now')),
                 expires_at TEXT
             )
+        """)
+
+        # Create company_documents table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS company_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                document_type TEXT NOT NULL DEFAULT 'other',
+                file_path TEXT,
+                doc_id INTEGER,
+                expiry_date DATE,
+                issued_date DATE,
+                issuer TEXT,
+                notes TEXT,
+                metadata_json TEXT DEFAULT '{}',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_company_docs_company_key
+            ON company_documents(company_key)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_company_docs_expiry
+            ON company_documents(expiry_date)
+        """)
+
+        # Create reminders table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                message TEXT DEFAULT '',
+                due_date DATE NOT NULL,
+                is_done INTEGER NOT NULL DEFAULT 0,
+                linked_entity_type TEXT,
+                linked_entity_id INTEGER,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reminders_due_date
+            ON reminders(due_date)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reminders_is_done
+            ON reminders(is_done)
+        """)
+
+        # Create materials table (TEXT PKs)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS materials (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                normalized_name TEXT NOT NULL,
+                hs_code TEXT,
+                category TEXT,
+                unit TEXT,
+                description TEXT,
+                source_url TEXT,
+                origin_country TEXT,
+                origin_confidence TEXT NOT NULL DEFAULT 'unknown',
+                evidence_text TEXT,
+                brand TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_materials_normalized_name
+            ON materials(normalized_name)
+        """)
+
+        # Create material_synonyms table (TEXT PKs)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS material_synonyms (
+                id TEXT PRIMARY KEY,
+                material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+                synonym TEXT NOT NULL,
+                language TEXT NOT NULL DEFAULT 'en',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_material_synonyms_material
+            ON material_synonyms(material_id)
+        """)
+
+        # Create materials FTS5 virtual table
+        await conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS materials_fts USING fts5(
+                name, description,
+                content='materials', content_rowid='rowid'
+            )
+        """)
+
+        # FTS sync triggers
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS trg_materials_fts_insert
+            AFTER INSERT ON materials
+            BEGIN
+                INSERT INTO materials_fts(rowid, name, description)
+                VALUES (NEW.rowid, NEW.name, COALESCE(NEW.description, ''));
+            END
+        """)
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS trg_materials_fts_update
+            AFTER UPDATE ON materials
+            BEGIN
+                INSERT INTO materials_fts(materials_fts, rowid, name, description)
+                VALUES ('delete', OLD.rowid, OLD.name, COALESCE(OLD.description, ''));
+                INSERT INTO materials_fts(rowid, name, description)
+                VALUES (NEW.rowid, NEW.name, COALESCE(NEW.description, ''));
+            END
+        """)
+        await conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS trg_materials_fts_delete
+            AFTER DELETE ON materials
+            BEGIN
+                INSERT INTO materials_fts(materials_fts, rowid, name, description)
+                VALUES ('delete', OLD.rowid, OLD.name, COALESCE(OLD.description, ''));
+            END
+        """)
+
+        # Create inventory_items table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS inventory_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                material_id TEXT NOT NULL,
+                quantity_on_hand REAL NOT NULL DEFAULT 0.0,
+                avg_cost REAL NOT NULL DEFAULT 0.0,
+                last_movement_date DATE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (material_id) REFERENCES materials(id)
+            )
+        """)
+        await conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_material
+            ON inventory_items(material_id)
+        """)
+
+        # Create stock_movements table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS stock_movements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                inventory_item_id INTEGER NOT NULL,
+                movement_type TEXT NOT NULL CHECK(movement_type IN ('in', 'out', 'adjust')),
+                quantity REAL NOT NULL,
+                unit_cost REAL NOT NULL DEFAULT 0.0,
+                reference TEXT,
+                notes TEXT,
+                movement_date DATE NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id)
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_movements_item
+            ON stock_movements(inventory_item_id)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_movements_date
+            ON stock_movements(movement_date)
+        """)
+
+        # Create local_sales_invoices table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS local_sales_invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_number TEXT NOT NULL,
+                customer_name TEXT NOT NULL,
+                sale_date DATE NOT NULL,
+                subtotal REAL NOT NULL DEFAULT 0.0,
+                tax_amount REAL NOT NULL DEFAULT 0.0,
+                total_amount REAL NOT NULL DEFAULT 0.0,
+                total_cost REAL NOT NULL DEFAULT 0.0,
+                total_profit REAL NOT NULL DEFAULT 0.0,
+                notes TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sales_inv_date
+            ON local_sales_invoices(sale_date)
+        """)
+
+        # Create local_sales_items table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS local_sales_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sales_invoice_id INTEGER NOT NULL,
+                inventory_item_id INTEGER NOT NULL,
+                material_id TEXT NOT NULL,
+                description TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                unit_price REAL NOT NULL,
+                cost_basis REAL NOT NULL DEFAULT 0.0,
+                line_total REAL NOT NULL DEFAULT 0.0,
+                profit REAL NOT NULL DEFAULT 0.0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sales_invoice_id) REFERENCES local_sales_invoices(id),
+                FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id),
+                FOREIGN KEY (material_id) REFERENCES materials(id)
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sales_items_invoice
+            ON local_sales_items(sales_invoice_id)
         """)
 
         await conn.commit()
@@ -486,6 +703,34 @@ def sample_memory_fact() -> MemoryFact:
         access_count=0,
         created_at=now,
         updated_at=now,
+    )
+
+
+@pytest.fixture
+def sample_company_document() -> CompanyDocument:
+    """Create a sample company document for testing."""
+    return CompanyDocument(
+        company_key="ACME",
+        title="Trade License",
+        document_type=CompanyDocumentType.LICENSE,
+        expiry_date=date.today() + timedelta(days=30),
+        issued_date=date.today() - timedelta(days=335),
+        issuer="Trade Authority",
+        notes="Annual trade license",
+        metadata={"region": "Dubai"},
+    )
+
+
+@pytest.fixture
+def sample_reminder() -> Reminder:
+    """Create a sample reminder for testing."""
+    return Reminder(
+        title="Review invoice",
+        message="Review INV-2024-001 before deadline",
+        due_date=date.today() + timedelta(days=3),
+        is_done=False,
+        linked_entity_type="invoice",
+        linked_entity_id=1,
     )
 
 
