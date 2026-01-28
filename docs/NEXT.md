@@ -1,7 +1,7 @@
 # NEXT.md — Checklist for Next Development Session
 
-**Updated**: 2026-01-28
-**Baseline**: ~891 tests pass | ruff 0 errors | mypy 0 errors
+**Updated**: 2026-01-28 (milestone close-out)
+**Baseline**: 916 tests collected | 804+ non-API pass | ruff 0 errors | mypy 3 errors (non-fatal)
 
 ---
 
@@ -134,6 +134,43 @@ All stabilization tasks completed. See STATUS.md Section 3 for remaining low-pri
 - [x] **Sales API** — `POST /invoices`, `GET /invoices`, `GET /invoices/{id}`
 - [x] **~57 new tests** — entity (18), store (17), use case (14), API (9), integration (1)
 - [x] **Documentation** — `INVENTORY_FLOW.md` (entities, WAC formula, stock flow, API endpoints, error codes)
+
+---
+
+## Phase 11: Smart Reminder Intelligence — COMPLETE
+
+### Completed
+
+- [x] **Insight entity** — `InsightCategory` (expiring_document, unmatched_item, price_anomaly), `InsightSeverity` (info, warning, critical), `Insight` Pydantic model
+- [x] **Invoice store update** — Added `list_unmatched_items()` to `IInvoiceStore` interface + SQLite implementation querying unmatched line items
+- [x] **ReminderIntelligenceService** — Layer-pure core service with 3 rules: expiring documents (CRITICAL/WARNING by days), unmatched items (deduplicated by name), price anomalies (>20% deviation, ≥2 records)
+- [x] **EvaluateReminderInsightsUseCase** — Lazy store initialization, runs all rules, optional `auto_create` for derived reminders with `insight:` prefix and duplicate detection
+- [x] **DTOs** — `InsightResponse`, `InsightsEvaluationResponse` with per-category counts
+- [x] **API endpoint** — `GET /api/reminders/insights?expiry_days=30&auto_create=false`
+- [x] **~23 new tests** — entity (3), service (11), use case (5), API (4)
+- [x] **Documentation** — `REMINDER_INTELLIGENCE.md` (rules, API, derived reminders, architecture)
+
+---
+
+## Phase 12: Milestone Close-Out — COMPLETE
+
+### Completed
+
+- [x] **PowerShell runner script** — `tools/run_all.ps1`: kills stale uvicorn, runs migrations, starts server, verifies health, prints links
+- [x] **Verification script** — `tools/verify_all.ps1`: two-phase tests (non-API then API), lint, type check with summary
+- [x] **Smoke test runbook** — `docs/SMOKE_TEST.md`: manual verification steps for all major endpoints
+- [x] **Evidence-based docs update** — Updated STATUS.md and NEXT.md with pytest counts, mypy status from live runs
+- [x] **Endpoint verification** — Confirmed 60+ endpoints from openapi.json (inventory/sales routers registered but may need server restart)
+
+### Close-Out Validation
+
+```powershell
+# Run full verification suite
+powershell -ExecutionPolicy Bypass -File .\tools\verify_all.ps1
+
+# Start server with health check
+powershell -ExecutionPolicy Bypass -File .\tools\run_all.ps1
+```
 
 ---
 

@@ -2,181 +2,277 @@
 
 Manual verification steps to confirm the SRG application is working after deployment or migration.
 
+**Updated**: 2026-01-28
+
 ---
 
 ## Prerequisites
 
-```bash
-# Install dependencies
+```powershell
+# Install dependencies (dev mode)
 pip install -e ".[dev]"
-
-# Run database migrations
-python -m src.infrastructure.storage.sqlite.migrations.migrator
 ```
 
 ---
 
 ## 1. Start the Server
 
-```bash
-# Start with auto-reload (development)
-uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+Use the automated runner script for reliable startup:
 
-# Or start with log capture (background)
-python -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000 > server.log 2>&1 &
+```powershell
+# From repository root
+powershell -ExecutionPolicy Bypass -File .\tools\run_all.ps1
 ```
 
-Wait a few seconds for startup, then proceed.
+This script will:
+1. Kill any stale uvicorn processes
+2. Run database migrations
+3. Start the server on `127.0.0.1:8000`
+4. Verify health endpoint returns 200
+5. Print links to Swagger UI, OpenAPI, and log file
+
+**Manual alternative** (if script unavailable):
+
+```powershell
+# Run migrations
+python -m src.infrastructure.storage.sqlite.migrations.migrator
+
+# Start server with log capture
+Start-Process uvicorn -ArgumentList "src.api.main:app", "--host", "127.0.0.1", "--port", "8000" -RedirectStandardOutput server.log -RedirectStandardError server.log
+```
 
 ---
 
 ## 2. Health Check
 
-```bash
+```powershell
+# Basic health
 curl -s http://127.0.0.1:8000/api/health
-```
 
-Expected: `{"status": "ok", ...}`
-
-```bash
+# Detailed health (includes LLM, DB, embedding status)
 curl -s http://127.0.0.1:8000/api/health/detailed
 ```
 
-Expected: JSON with `status`, `version`, `uptime_seconds`, and provider health info.
+**Expected**: `{"status": "ok", ...}` with HTTP 200
 
 ---
 
-## 3. Invoices
+## 3. Reminders
 
-```bash
-# List invoices
+```powershell
+# List all reminders
+curl -s http://127.0.0.1:8000/api/reminders
+
+# List upcoming reminders (next 7 days)
+curl -s "http://127.0.0.1:8000/api/reminders/upcoming?within_days=7"
+
+# Get reminder insights
+curl -s "http://127.0.0.1:8000/api/reminders/insights"
+```
+
+**Expected**: `{"reminders": [...], "total": N}` with HTTP 200
+
+---
+
+## 4. Company Documents
+
+```powershell
+# List all company documents
+curl -s http://127.0.0.1:8000/api/company-documents
+
+# List expiring documents (within 30 days)
+curl -s "http://127.0.0.1:8000/api/company-documents/expiring?within_days=30"
+
+# Trigger expiry check and auto-create reminders
+curl -s -X POST "http://127.0.0.1:8000/api/company-documents/check-expiry?within_days=30"
+```
+
+**Expected**: `{"documents": [...], "total": N}` with HTTP 200
+
+---
+
+## 5. Invoices
+
+```powershell
+# List all invoices
 curl -s http://127.0.0.1:8000/api/invoices
 
+# Get specific invoice (replace {id} with actual ID)
+curl -s http://127.0.0.1:8000/api/invoices/{id}
+
 # Upload an invoice (if you have a test PDF)
-curl -X POST http://127.0.0.1:8000/api/invoices/upload \
-  -F "file=@test_invoice.pdf" \
-  -F "auto_audit=true"
+curl -X POST http://127.0.0.1:8000/api/invoices/upload -F "file=@test_invoice.pdf"
 ```
 
-Expected (list): `{"invoices": [...], "total": N, "limit": 20, "offset": 0}`
+**Expected**: `{"invoices": [...], "total": N, "limit": 20, "offset": 0}` with HTTP 200
 
 ---
 
-## 4. Catalog
+## 6. Catalog
 
-```bash
-# List materials
+```powershell
+# List all materials
 curl -s http://127.0.0.1:8000/api/catalog/
 
-# Search materials
+# Search materials by name
 curl -s "http://127.0.0.1:8000/api/catalog/?q=cable"
+
+# Get specific material (replace {id})
+curl -s http://127.0.0.1:8000/api/catalog/{id}
 ```
 
-Expected: `{"materials": [...], "total": N}`
+**Expected**: `{"materials": [...], "total": N}` with HTTP 200
 
 ---
 
-## 5. Prices
+## 7. Price History & Statistics
 
-```bash
-# Price statistics
-curl -s "http://127.0.0.1:8000/api/prices/stats"
+```powershell
+# Get price statistics
+curl -s http://127.0.0.1:8000/api/prices/stats
 
-# Price history (with optional filters)
+# Get price history (with optional filters)
+curl -s "http://127.0.0.1:8000/api/prices/history?limit=50"
+
+# Filter by item name
 curl -s "http://127.0.0.1:8000/api/prices/history?item=cable"
 ```
 
-Expected (stats): `{"stats": [...], "total": N}`
-Expected (history): `{"entries": [...], "total": N}`
+**Expected (stats)**: `{"stats": [...], "total": N}` with HTTP 200
+**Expected (history)**: `{"entries": [...], "total": N}` with HTTP 200
 
 ---
 
-## 6. Company Documents
+## 8. Inventory
 
-```bash
-# List company documents
-curl -s http://127.0.0.1:8000/api/company-documents
+```powershell
+# Get inventory status
+curl -s http://127.0.0.1:8000/api/inventory/status
 
-# List expiring documents
-curl -s "http://127.0.0.1:8000/api/company-documents/expiring?within_days=30"
+# Get movements for item (replace {id})
+curl -s http://127.0.0.1:8000/api/inventory/{id}/movements
 ```
 
-Expected: `{"documents": [...], "total": N}`
+**Expected**: `{"items": [...], "total": N}` with HTTP 200
 
 ---
 
-## 7. Reminders
+## 9. Sales
 
-```bash
-# List reminders
-curl -s http://127.0.0.1:8000/api/reminders
-
-# List upcoming reminders
-curl -s "http://127.0.0.1:8000/api/reminders/upcoming?within_days=7"
+```powershell
+# List sales invoices
+curl -s http://127.0.0.1:8000/api/sales/invoices
 ```
 
-Expected: `{"reminders": [...], "total": N}`
+**Expected**: `{"invoices": [...], "total": N}` with HTTP 200
 
 ---
 
-## 8. Search
+## 10. Search & Chat
 
-```bash
+```powershell
 # Quick search
 curl -s "http://127.0.0.1:8000/api/search/quick?q=invoice"
-```
 
-Expected: JSON with `results` array and `total`.
-
----
-
-## 9. Sessions
-
-```bash
 # List chat sessions
 curl -s http://127.0.0.1:8000/api/sessions
 ```
 
-Expected: `{"sessions": [...], "total": N}`
+**Expected**: JSON response with results/sessions array
 
 ---
 
-## Quick All-in-One (copy-paste)
+## Quick All-in-One Check
 
-```bash
-echo "=== Health ===" && \
-curl -s http://127.0.0.1:8000/api/health && echo && \
-echo "=== Invoices ===" && \
-curl -s http://127.0.0.1:8000/api/invoices && echo && \
-echo "=== Catalog ===" && \
-curl -s http://127.0.0.1:8000/api/catalog/ && echo && \
-echo "=== Price Stats ===" && \
-curl -s http://127.0.0.1:8000/api/prices/stats && echo && \
-echo "=== Company Docs ===" && \
-curl -s http://127.0.0.1:8000/api/company-documents && echo && \
-echo "=== Reminders ===" && \
-curl -s http://127.0.0.1:8000/api/reminders && echo && \
-echo "=== DONE ==="
+Copy and paste this block to verify all major endpoints:
+
+```powershell
+Write-Host "=== Health ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/health
+Write-Host "`n=== Reminders ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/reminders
+Write-Host "`n=== Company Docs ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/company-documents
+Write-Host "`n=== Invoices ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/invoices
+Write-Host "`n=== Catalog ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/catalog/
+Write-Host "`n=== Price Stats ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/prices/stats
+Write-Host "`n=== Inventory ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/inventory/status
+Write-Host "`n=== Sales ===" -ForegroundColor Cyan
+curl -s http://127.0.0.1:8000/api/sales/invoices
+Write-Host "`n=== DONE ===" -ForegroundColor Green
 ```
 
-All endpoints should return HTTP 200 with valid JSON. If any return 500, check `server.log` or see `docs/TROUBLESHOOTING.md`.
+All endpoints should return HTTP 200 with valid JSON.
 
 ---
 
-## Automated Tests
+## Automated Verification
 
-```bash
-# Full suite
-pytest -v
+Run the full test suite:
 
-# Quick subset (no app startup overhead)
-pytest tests/core/ tests/unit/ tests/infrastructure/ -q
+```powershell
+# Full verification (tests + lint + type check)
+powershell -ExecutionPolicy Bypass -File .\tools\verify_all.ps1
 
-# API tests only
-pytest tests/api/ -q
-
-# Integration tests only
-pytest tests/integration/ -q
+# Or run individual phases manually:
+python -m pytest -v tests/core tests/unit tests/infrastructure  # Non-API tests
+python -m pytest -v tests/api tests/integration                  # API tests
+python -m ruff check src tests                                   # Lint
+python -m mypy src                                               # Type check
 ```
 
-Expected: 738 pass, 0 fail.
+**Expected**: ~891 tests pass, 0 ruff errors, 0 mypy errors
+
+---
+
+## Troubleshooting
+
+### Stale uvicorn processes
+
+If the server won't start or port 8000 is busy:
+
+```powershell
+# Kill all uvicorn processes
+Get-Process -Name uvicorn -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# Check what's using port 8000
+netstat -ano | Select-String ":8000"
+
+# Kill process by PID (replace with actual PID)
+Stop-Process -Id <PID> -Force
+```
+
+### Check server logs
+
+```powershell
+# View last 50 lines of server log
+Get-Content server.log -Tail 50
+
+# Follow log in real-time
+Get-Content server.log -Wait -Tail 20
+```
+
+### Database issues
+
+```powershell
+# Re-run migrations
+python -m src.infrastructure.storage.sqlite.migrations.migrator
+
+# Check migration status
+# (Migrations are in data/srg.db, schema_migrations table)
+```
+
+### Common error codes
+
+| Error | Meaning | Fix |
+|-------|---------|-----|
+| `INVOICE_NOT_FOUND` | Invoice ID doesn't exist | Check ID, list invoices first |
+| `MATERIAL_NOT_FOUND` | Material ID doesn't exist | Check ID, list catalog first |
+| `INSUFFICIENT_STOCK` | Not enough inventory | Check stock levels |
+| `LLM_UNAVAILABLE` | Ollama not running | Start Ollama service |
+
+See `docs/TROUBLESHOOTING.md` for more details.
