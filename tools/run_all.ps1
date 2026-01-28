@@ -51,18 +51,15 @@ if ($portInUse) {
 # Step 2: Run DB migrations
 Write-Host ""
 Write-Host "[2/5] Running database migrations..." -ForegroundColor Yellow
-try {
-    $migrationOutput = python -m src.infrastructure.storage.sqlite.migrations.migrator 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "       Migration failed!" -ForegroundColor Red
-        Write-Host $migrationOutput
-        exit 1
-    }
-    Write-Host "       Migrations complete." -ForegroundColor Green
-} catch {
-    Write-Host "       Migration error: $_" -ForegroundColor Red
+# Use cmd.exe to avoid PowerShell NativeCommandError on stderr warnings
+$migrationOutput = cmd /c "python -m src.infrastructure.storage.sqlite.migrations.migrator 2>&1"
+$migrationExit = $LASTEXITCODE
+if ($migrationExit -ne 0) {
+    Write-Host "       Migration failed!" -ForegroundColor Red
+    $migrationOutput | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
     exit 1
 }
+Write-Host "       Migrations complete." -ForegroundColor Green
 
 # Step 3: Clear old log file
 Write-Host ""
@@ -72,10 +69,11 @@ if (Test-Path $LogFile) {
 }
 
 # Start server in background with output redirected to log file
+$stderrLog = "server_err.log"
 $serverProcess = Start-Process -FilePath "uvicorn" `
     -ArgumentList "src.api.main:app", "--host", $ServerHost, "--port", $ServerPort `
     -RedirectStandardOutput $LogFile `
-    -RedirectStandardError $LogFile `
+    -RedirectStandardError $stderrLog `
     -PassThru `
     -WindowStyle Hidden
 
