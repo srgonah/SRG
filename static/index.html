@@ -1,14 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SRG Dashboard</title>
-    <script type="module" crossorigin src="/assets/index-Dn9vpHkx.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-trPuviLm.css">
-  </head>
-  <body class="bg-dark-950 text-gray-100">
-    <div id="root"></div>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRG Invoice Processing</title>
+<style>
+  :root {
+    --bg: #0f172a; --surface: #1e293b; --border: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #3b82f6;
+    --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+    --radius: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 1.25rem; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+  .health-badge { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+  .health-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .health-dot.ok { background: var(--green); }
+  .health-dot.err { background: var(--red); }
+
+  main { max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; }
+
+  /* Upload section */
+  .upload-section { margin-bottom: 2rem; }
+  .upload-section h2 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: var(--radius); padding: 2rem;
+    text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+  }
+  .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: rgba(59,130,246,0.05); }
+  .dropzone p { color: var(--muted); margin-bottom: 0.5rem; }
+  .dropzone .hint { font-size: 0.8rem; }
+  .dropzone input[type="file"] { display: none; }
+  .upload-opts { display: flex; gap: 1.5rem; margin-top: 0.75rem; justify-content: center; }
+  .upload-opts label { font-size: 0.85rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+  .upload-opts input[type="checkbox"] { accent-color: var(--accent); }
+  .upload-status { margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.2em; }
+  .upload-status.ok { color: var(--green); }
+  .upload-status.err { color: var(--red); }
+  .upload-status.working { color: var(--yellow); }
+
+  /* Cards grid */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.25rem; text-decoration: none; color: var(--text); transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card h3 { font-size: 0.95rem; margin-bottom: 0.35rem; }
+  .card p { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+
+  /* Footer */
+  footer { text-align: center; padding: 2rem; color: var(--muted); font-size: 0.8rem; }
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>SRG</span> Invoice Processing</h1>
+  <div class="health-badge">
+    <div class="health-dot" id="healthDot"></div>
+    <span id="healthText">checking...</span>
+  </div>
+</header>
+
+<main>
+  <section class="upload-section">
+    <h2>Upload Invoice</h2>
+    <div class="dropzone" id="dropzone">
+      <p>Drag &amp; drop a PDF invoice here, or click to browse</p>
+      <p class="hint">Accepted: PDF files</p>
+      <input type="file" id="fileInput" accept=".pdf">
+      <div class="upload-opts">
+        <label><input type="checkbox" id="optAudit" checked> Auto-audit</label>
+        <label><input type="checkbox" id="optCatalog" checked> Auto-catalog</label>
+      </div>
+    </div>
+    <div class="upload-status" id="uploadStatus"></div>
+  </section>
+
+  <h2 style="font-size:1rem; margin-bottom:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">API Endpoints</h2>
+  <div class="cards">
+    <a class="card" href="/docs">
+      <h3>Swagger UI</h3>
+      <p>Interactive API documentation with try-it-out</p>
+    </a>
+    <a class="card" href="/api/invoices/">
+      <h3>Invoices</h3>
+      <p>List, view, and manage parsed invoices</p>
+    </a>
+    <a class="card" href="/api/catalog/">
+      <h3>Catalog</h3>
+      <p>Materials catalog with FTS5 search and synonyms</p>
+    </a>
+    <a class="card" href="/api/prices/stats">
+      <h3>Price Stats</h3>
+      <p>Price history and anomaly statistics</p>
+    </a>
+    <a class="card" href="/api/company-documents/">
+      <h3>Documents</h3>
+      <p>Company documents and expiry tracking</p>
+    </a>
+    <a class="card" href="/api/reminders/">
+      <h3>Reminders</h3>
+      <p>Smart reminders and intelligence insights</p>
+    </a>
+    <a class="card" href="/api/inventory/status">
+      <h3>Inventory</h3>
+      <p>Stock levels, WAC, and movements</p>
+    </a>
+    <a class="card" href="/api/sales/invoices">
+      <h3>Local Sales</h3>
+      <p>Sales invoices, profit, and cost tracking</p>
+    </a>
+    <a class="card" href="/api/health">
+      <h3>Health</h3>
+      <p>System health, DB, LLM, and vector store status</p>
+    </a>
+  </div>
+</main>
+
+<footer>
+  SRG v1.0.0 &mdash; <a href="/docs">API Docs</a> &middot; <a href="/openapi.json">OpenAPI Spec</a>
+</footer>
+
+<script>
+// Health check
+(async () => {
+  const dot = document.getElementById('healthDot');
+  const txt = document.getElementById('healthText');
+  try {
+    const r = await fetch('/api/health');
+    if (r.ok) { dot.className = 'health-dot ok'; txt.textContent = 'healthy'; }
+    else { dot.className = 'health-dot err'; txt.textContent = 'unhealthy'; }
+  } catch { dot.className = 'health-dot err'; txt.textContent = 'unreachable'; }
+})();
+
+// Upload
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const status = document.getElementById('uploadStatus');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); upload(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) upload(fileInput.files[0]); });
+
+async function upload(file) {
+  if (!file) return;
+  status.className = 'upload-status working';
+  status.textContent = 'Uploading ' + file.name + '...';
+  const form = new FormData();
+  form.append('file', file);
+  const audit = document.getElementById('optAudit').checked;
+  const catalog = document.getElementById('optCatalog').checked;
+  try {
+    const r = await fetch('/api/invoices/upload?auto_audit=' + audit + '&auto_catalog=' + catalog, { method: 'POST', body: form });
+    const data = await r.json();
+    if (r.ok) {
+      status.className = 'upload-status ok';
+      const id = data.invoice_id || data.id || '';
+      status.textContent = 'Uploaded successfully' + (id ? ' (ID: ' + id + ')' : '');
+    } else {
+      status.className = 'upload-status err';
+      status.textContent = 'Error: ' + (data.message || data.detail || r.statusText);
+    }
+  } catch (e) {
+    status.className = 'upload-status err';
+    status.textContent = 'Upload failed: ' + e.message;
+  }
+  fileInput.value = '';
+}
+</script>
+</body>
 </html>
