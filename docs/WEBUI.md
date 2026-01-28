@@ -107,20 +107,59 @@ Start the backend first (`uvicorn src.api.main:app`), then `npm run dev`.
 
 ---
 
+## Serve from Backend
+
+After building the React SPA, FastAPI serves it directly — no separate web server needed.
+
+```bash
+# 1. Build the frontend
+cd webui
+npm install
+npm run build
+
+# 2. Start the backend (from project root)
+cd ..
+uvicorn src.api.main:app --host 127.0.0.1 --port 8000
+
+# 3. Open in browser
+# http://127.0.0.1:8000/
+```
+
+### How It Works
+
+`src/api/main.py` resolves the SPA build with this priority:
+
+1. **`/assets/*`** — StaticFiles mount serves `webui/dist/assets/` (Vite JS/CSS bundles)
+2. **`GET /`** — Returns `webui/dist/index.html` (React SPA entry)
+3. **`GET /{path}`** (SPA catch-all) — Returns `webui/dist/index.html` for client-side routes like `/invoices`, `/catalog`, etc.
+4. **Fallback** — If `webui/dist/` does not exist, serves `static/index.html` (minimal page)
+
+Routes that are **not** affected by the SPA:
+
+- `/api/*` — All API endpoints (handled by FastAPI routers)
+- `/docs` — Swagger UI
+- `/redoc` — ReDoc
+- `/health` — Root health check
+- `/openapi.json` — OpenAPI schema
+
+### Verified
+
+```
+GET /              → 200 (React SPA index.html)
+GET /invoices      → 200 (SPA catch-all → index.html → React Router)
+GET /assets/*.js   → 200 (Vite JS bundle, 269 KB)
+GET /api/health    → 200 (JSON health response)
+GET /docs          → 200 (Swagger UI)
+```
+
+---
+
 ## Minimal Fallback (`static/index.html`)
 
-A zero-dependency HTML page served by FastAPI at `GET /` when no SPA build is deployed. It includes:
+A zero-dependency HTML page served by FastAPI at `GET /` when `webui/dist/` does not exist. It includes:
 
 - Health check indicator
 - Drag-and-drop invoice upload
 - API endpoint cards
 
-### How It's Served
-
-FastAPI wiring in `src/api/main.py`:
-
-1. **Static mount** (line 174–177): `static/` mounted at `/static`
-2. **Root endpoint** (line 186–198): `GET /` returns `static/index.html` via `FileResponse`
-3. **SPA catch-all** (line 213–225): Non-API paths also return `index.html`
-
-If `static/index.html` does not exist, `GET /` falls back to a JSON response.
+This fallback activates automatically if you run the backend without building the React SPA first.

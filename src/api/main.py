@@ -172,7 +172,21 @@ def create_app() -> FastAPI:
     app.include_router(sales_router)
 
     # Mount static files for web UI
-    static_dir = Path(__file__).parent.parent.parent / "static"
+    # Priority: webui/dist (React SPA build) > static/ (minimal fallback)
+    project_root = Path(__file__).parent.parent.parent
+
+    # Vite build assets (JS/CSS bundles with content hashes)
+    dist_assets = project_root / "webui" / "dist" / "assets"
+    if dist_assets.exists():
+        app.mount("/assets", StaticFiles(directory=str(dist_assets)), name="spa-assets")
+
+    # Vite public files (e.g. vite.svg) served at root level
+    dist_dir = project_root / "webui" / "dist"
+    if dist_dir.exists():
+        app.mount("/spa-static", StaticFiles(directory=str(dist_dir)), name="spa-root")
+
+    # Legacy fallback static files
+    static_dir = project_root / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
@@ -187,10 +201,18 @@ app = create_app()
 @app.get("/", response_model=None)
 async def root() -> FileResponse | dict[str, str]:
     """Serve web UI or return API info."""
-    static_dir = Path(__file__).parent.parent.parent / "static"
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        return FileResponse(index_file)
+    project_root = Path(__file__).parent.parent.parent
+
+    # Prefer React SPA build
+    spa_index = project_root / "webui" / "dist" / "index.html"
+    if spa_index.exists():
+        return FileResponse(spa_index)
+
+    # Fall back to minimal static page
+    static_index = project_root / "static" / "index.html"
+    if static_index.exists():
+        return FileResponse(static_index)
+
     return {
         "name": "SRG Invoice Processing API",
         "version": "1.0.0",
@@ -218,10 +240,18 @@ async def spa_catch_all(path: str) -> Response | dict[str, str]:
     if path.startswith("api/"):
         return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
-    static_dir = Path(__file__).parent.parent.parent / "static"
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        return FileResponse(index_file)
+    project_root = Path(__file__).parent.parent.parent
+
+    # Prefer React SPA build
+    spa_index = project_root / "webui" / "dist" / "index.html"
+    if spa_index.exists():
+        return FileResponse(spa_index)
+
+    # Fall back to minimal static page
+    static_index = project_root / "static" / "index.html"
+    if static_index.exists():
+        return FileResponse(static_index)
+
     return {"detail": "Not Found"}
 
 
