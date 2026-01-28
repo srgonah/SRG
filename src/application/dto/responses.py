@@ -580,3 +580,31 @@ class SalesInvoiceListResponse(BaseModel):
 
     invoices: list[LocalSalesInvoiceResponse]
     total: int
+
+
+# --- Reminder Intelligence / Insights ---
+
+
+class InsightResponse(BaseModel):
+    """Single insight detected by reminder intelligence."""
+
+    category: str
+    severity: str
+    title: str
+    message: str = ""
+    suggested_due_date: date | None = None
+    linked_entity_type: str | None = None
+    linked_entity_id: int | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class InsightsEvaluationResponse(BaseModel):
+    """Response for insight evaluation endpoint."""
+
+    total_insights: int
+    expiring_documents: int = 0
+    unmatched_items: int = 0
+    price_anomalies: int = 0
+    insights: list[InsightResponse] = Field(default_factory=list)
+    reminders_created: int = 0
+    created_reminder_ids: list[int] = Field(default_factory=list)

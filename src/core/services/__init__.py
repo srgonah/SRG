@@ -19,6 +19,7 @@ from src.core.services.proforma_pdf_service import (
     ProformaPdfResult,
     ProformaPdfService,
 )
+from src.core.services.reminder_intelligence import ReminderIntelligenceService
 from src.core.services.search_service import SearchContext, SearchService
 
 __all__ = [
@@ -40,4 +41,6 @@ __all__ = [
     "ChatService",
     # Document Indexer
     "DocumentIndexerService",
+    # Reminder Intelligence
+    "ReminderIntelligenceService",
 ]

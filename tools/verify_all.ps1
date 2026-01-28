@@ -41,8 +41,10 @@ Write-Host "[Phase 1/4] Running non-API tests (core, unit, infrastructure)..." -
 Write-Host ""
 
 $phase1Start = Get-Date
-$phase1Output = python -m pytest -v tests/core tests/unit tests/infrastructure 2>&1 | Out-String
+# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+$phase1Output = cmd /c "python -m pytest -v tests/core tests/unit tests/infrastructure 2>&1"
 $phase1Exit = $LASTEXITCODE
+$phase1Output = $phase1Output -join "`n"
 $phase1Duration = [math]::Round(((Get-Date) - $phase1Start).TotalSeconds, 1)
 
 # Parse test counts from pytest output
@@ -73,8 +75,10 @@ Write-Host "[Phase 2/4] Running API tests (api, integration)..." -ForegroundColo
 Write-Host ""
 
 $phase2Start = Get-Date
-$phase2Output = python -m pytest -v tests/api tests/integration 2>&1 | Out-String
+# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+$phase2Output = cmd /c "python -m pytest -v tests/api tests/integration 2>&1"
 $phase2Exit = $LASTEXITCODE
+$phase2Output = $phase2Output -join "`n"
 $phase2Duration = [math]::Round(((Get-Date) - $phase2Start).TotalSeconds, 1)
 
 # Parse test counts
@@ -105,8 +109,10 @@ Write-Host "[Phase 3/4] Running lint (ruff check)..." -ForegroundColor Yellow
 Write-Host ""
 
 $phase3Start = Get-Date
-$phase3Output = python -m ruff check src tests 2>&1 | Out-String
+# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+$phase3Output = cmd /c "python -m ruff check src tests 2>&1"
 $phase3Exit = $LASTEXITCODE
+$phase3Output = $phase3Output -join "`n"
 $phase3Duration = [math]::Round(((Get-Date) - $phase3Start).TotalSeconds, 1)
 
 if ($phase3Exit -eq 0) {
@@ -134,8 +140,10 @@ Write-Host "(Note: mypy failures do not fail the overall verification)" -Foregro
 Write-Host ""
 
 $phase4Start = Get-Date
-$phase4Output = python -m mypy src 2>&1 | Out-String
+# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+$phase4Output = cmd /c "python -m mypy src 2>&1"
 $phase4Exit = $LASTEXITCODE
+$phase4Output = $phase4Output -join "`n"
 $phase4Duration = [math]::Round(((Get-Date) - $phase4Start).TotalSeconds, 1)
 
 # Parse error count

@@ -19,6 +19,7 @@ from src.application.use_cases import (
     ChatWithContextUseCase,
     CheckExpiringDocumentsUseCase,
     CreateSalesInvoiceUseCase,
+    EvaluateReminderInsightsUseCase,
     GenerateProformaPdfUseCase,
     IngestMaterialUseCase,
     IssueStockUseCase,
@@ -165,6 +166,12 @@ def get_generate_proforma_pdf_use_case() -> GenerateProformaPdfUseCase:
 def get_ingest_material_use_case() -> IngestMaterialUseCase:
     """Get ingest material use case."""
     return IngestMaterialUseCase()
+
+
+# Evaluate insights use case dependency
+def get_evaluate_insights_use_case() -> EvaluateReminderInsightsUseCase:
+    """Get evaluate reminder insights use case."""
+    return EvaluateReminderInsightsUseCase()
 
 
 # Expiry check use case dependency

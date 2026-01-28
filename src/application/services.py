@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, cast
 
 from src.core.interfaces import (
     IHybridSearcher,
+    IProductPageFetcher,
     IReranker,
     ISearchCache,
 )
@@ -361,7 +362,7 @@ def get_material_ingestion_service(
     from src.infrastructure.scrapers import AmazonProductFetcher
     from src.infrastructure.storage.sqlite.material_store import SQLiteMaterialStore
 
-    fetchers = [AmazonProductFetcher()]
+    fetchers: list[IProductPageFetcher] = [AmazonProductFetcher()]
     store = material_store or SQLiteMaterialStore()
 
     service = MaterialIngestionService(

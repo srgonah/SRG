@@ -8,6 +8,10 @@ from src.application.use_cases.check_expiring_documents import (
     ExpiryCheckResult,
 )
 from src.application.use_cases.create_sales_invoice import CreateSalesInvoiceUseCase
+from src.application.use_cases.evaluate_reminder_insights import (
+    EvaluateReminderInsightsUseCase,
+    InsightEvaluationResult,
+)
 from src.application.use_cases.generate_proforma_pdf import GenerateProformaPdfUseCase
 from src.application.use_cases.ingest_material import IngestMaterialUseCase
 from src.application.use_cases.issue_stock import IssueStockUseCase
@@ -26,6 +30,8 @@ __all__ = [
     "IngestMaterialUseCase",
     "CheckExpiringDocumentsUseCase",
     "ExpiryCheckResult",
+    "EvaluateReminderInsightsUseCase",
+    "InsightEvaluationResult",
     "ReceiveStockUseCase",
     "IssueStockUseCase",
     "CreateSalesInvoiceUseCase",

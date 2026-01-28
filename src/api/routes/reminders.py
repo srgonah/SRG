@@ -6,13 +6,16 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from src.api.dependencies import get_rem_store
+from src.api.dependencies import get_evaluate_insights_use_case, get_rem_store
 from src.application.dto.requests import CreateReminderRequest, UpdateReminderRequest
 from src.application.dto.responses import (
     ErrorResponse,
+    InsightResponse,
+    InsightsEvaluationResponse,
     ReminderListResponse,
     ReminderResponse,
 )
+from src.application.use_cases import EvaluateReminderInsightsUseCase
 from src.core.entities.reminder import Reminder
 from src.infrastructure.storage.sqlite import SQLiteReminderStore
 
@@ -100,6 +103,43 @@ async def list_upcoming_reminders(
     return ReminderListResponse(
         reminders=[_entity_to_response(r) for r in reminders],
         total=len(reminders),
+    )
+
+
+@router.get(
+    "/insights",
+    response_model=InsightsEvaluationResponse,
+)
+async def evaluate_reminder_insights(
+    expiry_days: int = 30,
+    auto_create: bool = False,
+    use_case: EvaluateReminderInsightsUseCase = Depends(get_evaluate_insights_use_case),
+) -> InsightsEvaluationResponse:
+    """Evaluate system state and return detected insights."""
+    result = await use_case.execute(
+        expiry_days=expiry_days,
+        auto_create=auto_create,
+    )
+    return InsightsEvaluationResponse(
+        total_insights=result.total_insights,
+        expiring_documents=result.expiring_documents,
+        unmatched_items=result.unmatched_items,
+        price_anomalies=result.price_anomalies,
+        insights=[
+            InsightResponse(
+                category=i.category.value,
+                severity=i.severity.value,
+                title=i.title,
+                message=i.message,
+                suggested_due_date=i.suggested_due_date,
+                linked_entity_type=i.linked_entity_type,
+                linked_entity_id=i.linked_entity_id,
+                details=i.details,
+            )
+            for i in result.insights
+        ],
+        reminders_created=result.reminders_created,
+        created_reminder_ids=result.created_reminder_ids,
     )
 
 

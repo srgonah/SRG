@@ -13,6 +13,11 @@ from src.core.entities.document import (
     PageType,
     SearchResult,
 )
+from src.core.entities.insight import (
+    Insight,
+    InsightCategory,
+    InsightSeverity,
+)
 from src.core.entities.inventory import (
     InventoryItem,
     MovementType,
@@ -79,6 +84,10 @@ __all__ = [
     "CompanyDocumentType",
     # Reminder entities
     "Reminder",
+    # Insight entities
+    "Insight",
+    "InsightCategory",
+    "InsightSeverity",
     # Inventory entities
     "InventoryItem",
     "StockMovement",

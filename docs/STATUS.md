@@ -1,8 +1,8 @@
 # SRG Progress Audit — STATUS.md
 
-**Updated**: 2026-01-28 (close-out)
+**Updated**: 2026-01-28 (final close-out)
 **Commit scope**: Full `src/`, `tests/`, tooling audit
-**Tool results**: pytest 916 collected, 804+ pass | ruff 0 errors | mypy 3 errors (non-fatal)
+**Tool results**: pytest 916 pass (804 non-API + 112 API) | ruff 0 errors | mypy 0 errors (140 files)
 
 ---
 
@@ -89,7 +89,7 @@
 | DTOs (request/response) | `application/dto/requests.py`, `responses.py` | Complete (includes catalog, price, company docs, reminders, proforma, catalog suggestions, expiry check, inventory, sales) |
 | Service factory (singletons) | `application/services.py` | Complete |
 
-### 1.4 API Layer — 60 Endpoints, 12 Routers
+### 1.4 API Layer — 53 paths, 12 Routers (confirmed from live openapi.json)
 
 | Router | File | Endpoints |
 |--------|------|-----------|
@@ -122,10 +122,11 @@ Invoice detail (`GET /api/invoices/{id}`) now includes per-item `matched_materia
 | Unit use case tests (upload, audit, search, chat, proforma, add-to-catalog, auto-match, ingest, check-expiry, receive-stock, issue-stock, create-sales-invoice) | ~85 | All pass |
 | Unit scraper tests (AmazonProductFetcher HTML parsing) | ~25 | All pass |
 | Integration tests (catalog flow, chat endpoint, inventory flow) | ~13 | All pass |
-| **Total** | **916 collected, 804+ non-API pass, 0 fail** | |
+| **Total** | **916 pass (804 non-API + 112 API), 0 fail** | |
 
 Phase 10 added ~57 new tests: entity (18), store (17), use case (14), API (9), integration (1).
 Phase 11 added ~23 new tests: entity (3), service (11), use case (5), API (4).
+Phase 12 fixed verify scripts (`cmd /c` for NativeCommandError), ruff I001, and 3 mypy errors.
 
 ---
 
@@ -158,15 +159,9 @@ Phase 11 added ~23 new tests: entity (3), service (11), use case (5), API (4).
 
 ### 3.2 Mypy Type Errors
 
-**Current: 3 errors (non-fatal)**
+**Current: 0 errors (140 source files)**
 
-```
-src/application/services.py:368 — Argument "fetchers" has incompatible type list[AmazonProductFetcher]
-src/application/use_cases/upload_invoice.py:178 — "ParserResult" has no attribute "id"
-src/application/use_cases/upload_invoice.py:185 — "ParserResult" has no attribute "id"
-```
-
-These are low-priority type covariance issues that don't affect runtime.
+Previously 3 errors (list invariance in services.py, missing attr-defined ignores in upload_invoice.py) — fixed in Phase 12 close-out.
 
 ### 3.3 Runtime Bugs (low priority)
 
@@ -192,18 +187,59 @@ These are low-priority type covariance issues that don't affect runtime.
 
 | Tool | Config | Result |
 |------|--------|--------|
-| **pytest** | `pyproject.toml` asyncio_mode=auto | 916 collected, 804+ non-API pass |
+| **pytest** | `pyproject.toml` asyncio_mode=auto | 916 pass (804 non-API + 112 API) |
 | **ruff** | `pyproject.toml` line-length=100 | 0 errors |
-| **mypy** | `pyproject.toml` strict=true | 3 errors (non-fatal) |
+| **mypy** | `pyproject.toml` strict=true | 0 errors (140 files) |
 | **coverage** | `pyproject.toml` fail_under=70 | Not measured this run |
 | **bandit** | `pyproject.toml` configured | Not run |
 
 ### Close-out Tooling
 
-New scripts added for milestone close-out:
-- `tools/run_all.ps1` — Kill stale uvicorn, run migrations, start server, verify health
-- `tools/verify_all.ps1` — Run tests (two phases), lint, type check, print summary
+Scripts for milestone close-out (available in both `Scripts/` and `tools/`):
+- `verify_all.ps1` — Two-phase tests (non-API then API), lint, type check with PASS/FAIL summary
+- `run_all.ps1` — Kill stale uvicorn, run migrations, start server, verify health
 - `docs/SMOKE_TEST.md` — Manual verification runbook
+
+### Manual Smoke Test (curl)
+
+After starting the server with `run_all.ps1`:
+
+```bash
+# Health check
+curl -s http://127.0.0.1:8000/api/health | python -m json.tool
+
+# Upload an invoice
+curl -s -X POST http://127.0.0.1:8000/api/invoices/upload \
+  -F "file=@sample.pdf" | python -m json.tool
+
+# List invoices
+curl -s http://127.0.0.1:8000/api/invoices | python -m json.tool
+
+# List materials catalog
+curl -s http://127.0.0.1:8000/api/catalog/ | python -m json.tool
+
+# Price history
+curl -s "http://127.0.0.1:8000/api/prices/history?item_name=test" | python -m json.tool
+
+# Company documents
+curl -s http://127.0.0.1:8000/api/company-documents | python -m json.tool
+
+# Reminders (upcoming + insights)
+curl -s http://127.0.0.1:8000/api/reminders/upcoming | python -m json.tool
+curl -s http://127.0.0.1:8000/api/reminders/insights | python -m json.tool
+
+# Inventory status
+curl -s http://127.0.0.1:8000/api/inventory/status | python -m json.tool
+
+# Sales invoices
+curl -s http://127.0.0.1:8000/api/sales/invoices | python -m json.tool
+
+# Proforma PDF (requires valid invoice_id)
+curl -s -X POST http://127.0.0.1:8000/api/invoices/1/proforma-pdf --output proforma.pdf
+
+# Swagger UI — open in browser
+# http://127.0.0.1:8000/docs
+```
 
 ---
 

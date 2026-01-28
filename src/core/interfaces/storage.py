@@ -197,6 +197,11 @@ class IInvoiceStore(ABC):
         """Get items that need indexing."""
         pass
 
+    @abstractmethod
+    async def list_unmatched_items(self, limit: int = 500) -> list[dict[str, Any]]:
+        """List line items with no matched material."""
+        pass
+
 
 class ISessionStore(ABC):
     """

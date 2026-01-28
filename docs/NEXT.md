@@ -1,7 +1,7 @@
 # NEXT.md — Checklist for Next Development Session
 
-**Updated**: 2026-01-28 (milestone close-out)
-**Baseline**: 916 tests collected | 804+ non-API pass | ruff 0 errors | mypy 3 errors (non-fatal)
+**Updated**: 2026-01-28 (final close-out)
+**Baseline**: 916 tests pass (804 non-API + 112 API) | ruff 0 errors | mypy 0 errors (140 files)
 
 ---
 
@@ -156,21 +156,40 @@ All stabilization tasks completed. See STATUS.md Section 3 for remaining low-pri
 
 ### Completed
 
-- [x] **PowerShell runner script** — `tools/run_all.ps1`: kills stale uvicorn, runs migrations, starts server, verifies health, prints links
-- [x] **Verification script** — `tools/verify_all.ps1`: two-phase tests (non-API then API), lint, type check with summary
-- [x] **Smoke test runbook** — `docs/SMOKE_TEST.md`: manual verification steps for all major endpoints
-- [x] **Evidence-based docs update** — Updated STATUS.md and NEXT.md with pytest counts, mypy status from live runs
-- [x] **Endpoint verification** — Confirmed 60+ endpoints from openapi.json (inventory/sales routers registered but may need server restart)
+- [x] **PowerShell runner script** — `run_all.ps1` (Scripts/ + tools/): kills stale uvicorn, runs migrations, starts server, verifies health
+- [x] **Verification script** — `verify_all.ps1` (Scripts/ + tools/): two-phase tests, lint, type check with PASS/FAIL summary
+- [x] **Fixed NativeCommandError false FAILs** — Both verify scripts use `cmd /c` to avoid PowerShell treating stderr as errors
+- [x] **Fixed ruff I001** — Moved `urllib` imports to top-of-file in `run_all.py`; fixed F541 and N806 in same file
+- [x] **Fixed 3 mypy errors** — List invariance in `services.py` (explicit `list[IProductPageFetcher]`); missing `type: ignore[attr-defined]` in `upload_invoice.py`
+- [x] **Smoke test runbook** — `docs/SMOKE_TEST.md` + curl commands in STATUS.md
+- [x] **Evidence-based docs update** — STATUS.md and NEXT.md with final pytest/ruff/mypy counts from live runs
+- [x] **Endpoint verification** — 53 API paths confirmed from live openapi.json, health returns 200
 
 ### Close-Out Validation
 
 ```powershell
-# Run full verification suite
-powershell -ExecutionPolicy Bypass -File .\tools\verify_all.ps1
+# Run full verification suite (PASS: 804+112 tests, 0 lint, 0 mypy)
+powershell -ExecutionPolicy Bypass -File .\Scripts\verify_all.ps1
 
 # Start server with health check
-powershell -ExecutionPolicy Bypass -File .\tools\run_all.ps1
+powershell -ExecutionPolicy Bypass -File .\Scripts\run_all.ps1
+
+# Open Swagger UI in browser
+# http://127.0.0.1:8000/docs
 ```
+
+---
+
+## Next Milestone (post-v1, all optional)
+
+| # | Feature | Description | Priority |
+|---|---------|-------------|----------|
+| N1 | **Amazon ingestion hardening** | Rate limiting, proxy rotation, retry logic, broader domain support | Optional |
+| N2 | **Inventory / local sales polish** | Bulk receive, inventory reports, sales summaries, WAC history chart | Optional |
+| N3 | **Reminder intelligence v2** | LLM-driven insight generation, scheduled background evaluations, email/webhook notifications | Optional |
+| N4 | **API consolidation** | Remove stale `src/srg/api/v1/` surface, unify under `src/api/` | Optional |
+| N5 | **Auth / multi-tenant** | Replace placeholder tokens with JWT, add user model and RBAC | Optional |
+| N6 | **Web UI** | Build frontend for Swagger-free usage (invoice upload, catalog browse, dashboard) | Optional |
 
 ---
 

@@ -175,14 +175,14 @@ class UploadInvoiceUseCase:
             # Optional auto-catalog matching
             catalog_matched = 0
             catalog_unmatched = 0
-            if request.auto_catalog and invoice.id:
+            if request.auto_catalog and invoice.id:  # type: ignore[attr-defined]
                 try:
                     from src.application.use_cases.add_to_catalog import (
                         AddToCatalogUseCase,
                     )
 
                     catalog_uc = AddToCatalogUseCase()
-                    match_result = await catalog_uc.auto_match_items(invoice.id)
+                    match_result = await catalog_uc.auto_match_items(invoice.id)  # type: ignore[attr-defined]
                     catalog_matched = match_result.matched
                     catalog_unmatched = match_result.unmatched
                 except Exception as e:

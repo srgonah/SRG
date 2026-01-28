@@ -413,6 +413,35 @@ class SQLiteInvoiceStore(IInvoiceStore):
                 for row in rows
             ]
 
+    async def list_unmatched_items(self, limit: int = 500) -> list[dict[str, Any]]:
+        """List line items with no matched material."""
+        async with get_connection() as conn:
+            cursor = await conn.execute(
+                """
+                SELECT ii.id, ii.item_name, ii.hs_code, ii.unit, ii.unit_price
+                FROM invoice_items ii
+                INNER JOIN invoices inv ON ii.invoice_id = inv.id
+                WHERE ii.row_type = 'line_item'
+                  AND (ii.matched_material_id IS NULL OR ii.matched_material_id = '')
+                  AND inv.is_latest = 1
+                  AND ii.item_name != ''
+                ORDER BY ii.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "id": row["id"],
+                    "item_name": row["item_name"],
+                    "hs_code": row["hs_code"],
+                    "unit": row["unit"],
+                    "unit_price": row["unit_price"],
+                }
+                for row in rows
+            ]
+
     # Conversion helpers
 
     def _row_to_invoice(self, row: aiosqlite.Row) -> Invoice:
