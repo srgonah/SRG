@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from src.core.interfaces import (
         IDocumentStore,
         IEmbeddingProvider,
+        IIndexingStateStore,
         IInvoiceStore,
         ILLMProvider,
         IMaterialStore,
@@ -155,6 +156,7 @@ async def get_document_indexer_service(
     document_store: "IDocumentStore | None" = None,
     embedding_provider: "IEmbeddingProvider | None" = None,
     vector_store: "IVectorStore | None" = None,
+    indexing_state_store: "IIndexingStateStore | None" = None,
 ) -> DocumentIndexerService:
     """
     Get or create DocumentIndexerService instance.
@@ -165,6 +167,7 @@ async def get_document_indexer_service(
         document_store: Optional document store override
         embedding_provider: Optional embedding provider override
         vector_store: Optional vector store override
+        indexing_state_store: Optional indexing state store override
 
     Returns:
         Configured DocumentIndexerService
@@ -176,17 +179,22 @@ async def get_document_indexer_service(
 
     # Lazy import infrastructure
     from src.infrastructure.embeddings import get_embedding_provider
-    from src.infrastructure.storage.sqlite import get_document_store as get_doc_store
+    from src.infrastructure.storage.sqlite import (
+        get_document_store as get_doc_store,
+        get_indexing_state_store as get_idx_state_store,
+    )
     from src.infrastructure.storage.vector import get_vector_store
 
     doc_store = document_store or await get_doc_store()
     embedder = embedding_provider or get_embedding_provider()
     vec_store = vector_store or get_vector_store()
+    idx_state_store = indexing_state_store or await get_idx_state_store()
 
-    service = DocumentIndexerService(  # type: ignore[call-arg]
+    service = DocumentIndexerService(
         document_store=doc_store,
         embedding_provider=embedder,
         vector_store=vec_store,
+        indexing_state_store=idx_state_store,
     )
 
     if document_store is None:

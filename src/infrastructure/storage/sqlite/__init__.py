@@ -11,6 +11,7 @@ from src.infrastructure.storage.sqlite.connection import (
     get_transaction,
 )
 from src.infrastructure.storage.sqlite.document_store import SQLiteDocumentStore
+from src.infrastructure.storage.sqlite.indexing_state_store import SQLiteIndexingStateStore
 from src.infrastructure.storage.sqlite.inventory_store import SQLiteInventoryStore
 from src.infrastructure.storage.sqlite.invoice_store import SQLiteInvoiceStore
 from src.infrastructure.storage.sqlite.material_store import SQLiteMaterialStore
@@ -44,6 +45,7 @@ _company_document_store: SQLiteCompanyDocumentStore | None = None
 _inventory_store: SQLiteInventoryStore | None = None
 _sales_store: SQLiteSalesStore | None = None
 _reminder_store: SQLiteReminderStore | None = None
+_indexing_state_store: SQLiteIndexingStateStore | None = None
 
 
 async def get_document_store() -> SQLiteDocumentStore:
@@ -118,6 +120,14 @@ async def get_reminder_store() -> SQLiteReminderStore:
     return _reminder_store
 
 
+async def get_indexing_state_store() -> SQLiteIndexingStateStore:
+    """Get singleton indexing state store instance."""
+    global _indexing_state_store
+    if _indexing_state_store is None:
+        _indexing_state_store = SQLiteIndexingStateStore()
+    return _indexing_state_store
+
+
 __all__ = [
     # Connection
     "ConnectionPool",
@@ -130,6 +140,7 @@ __all__ = [
     "close_connection_pool",
     # Store classes
     "SQLiteDocumentStore",
+    "SQLiteIndexingStateStore",
     "SQLiteInventoryStore",
     "SQLiteInvoiceStore",
     "SQLiteSessionStore",
@@ -150,6 +161,7 @@ __all__ = [
     "SalesStore",
     # Factory functions
     "get_document_store",
+    "get_indexing_state_store",
     "get_inventory_store",
     "get_invoice_store",
     "get_session_store",
