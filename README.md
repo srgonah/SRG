@@ -1,6 +1,6 @@
 # SRG - Invoice Processing System
 
-An invoice processing system with OCR/PDF parsing, automated auditing, hybrid semantic search, and RAG-powered chat. Built with FastAPI, SQLite, FAISS, and a React dashboard.
+An invoice processing system with OCR/PDF parsing, automated auditing, hybrid semantic search, RAG-powered chat, inventory management, and sales tracking. Built with FastAPI, SQLite, FAISS, and a React + Material-UI dashboard.
 
 ## Features
 
@@ -8,7 +8,13 @@ An invoice processing system with OCR/PDF parsing, automated auditing, hybrid se
 - **Automated Auditing** - Validate invoices with rule-based and LLM-powered audit checks
 - **Hybrid Search** - Combine FAISS vector search with SQLite FTS5 keyword search using Reciprocal Rank Fusion
 - **RAG Chat** - Ask questions about your invoices with retrieval-augmented generation and streaming responses
-- **React Dashboard** - Dark-themed UI with upload, search, invoice management, and chat (WCAG 2.1 AA compliant)
+- **Material Catalog** - Manage materials with fuzzy matching to invoice line items and Amazon product import
+- **Inventory Management** - Track stock levels with movement history, low-stock alerts, and categorization
+- **Sales Tracking** - Record sales transactions linked to inventory with automatic stock updates
+- **Price History** - Track price changes over time with anomaly detection
+- **Company Documents** - Manage business documents with expiration tracking and renewal reminders
+- **Proforma Invoices** - Generate professional PDF proforma invoices
+- **React Dashboard** - Material-UI based dark-themed dashboard (WCAG 2.1 AA compliant)
 
 ## Architecture
 
@@ -27,9 +33,9 @@ API (FastAPI) -> Application (Use Cases) -> Core (Entities/Services) -> Infrastr
 
 ## Tech Stack
 
-**Backend**: Python 3.11+, FastAPI, SQLite (aiosqlite), FAISS, Ollama/llama.cpp, sentence-transformers, PyMuPDF
+**Backend**: Python 3.11+, FastAPI, SQLite (aiosqlite), FAISS, Ollama/llama.cpp, sentence-transformers, PyMuPDF, fpdf2
 
-**Frontend**: React 18, TypeScript, Vite, Tailwind CSS, React Router
+**Frontend**: React 18, TypeScript, Vite, Material-UI (MUI), React Router, Vitest
 
 ## Quick Start
 
@@ -77,12 +83,12 @@ Visit `http://localhost:8000` for the dashboard and API.
 ### Dashboard (standalone dev server)
 
 ```bash
-cd dashboard
+cd webui
 npm install
 npm run dev
 ```
 
-The dashboard dev server will be available at `http://localhost:3000` (proxies API to `:8000`).
+The dashboard dev server will be available at `http://localhost:5173` (proxies API to `:8000`).
 
 ### Configuration
 
@@ -99,26 +105,54 @@ See [docs/configuration-reference.md](docs/configuration-reference.md) for the f
 
 ## API Endpoints
 
+### Core
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/health` | Health check |
+| `GET` | `/api/health` | Health check with component status |
 | `POST` | `/api/invoices/upload` | Upload and parse an invoice |
-| `GET` | `/api/invoices` | List invoices |
-| `GET` | `/api/invoices/{id}` | Get invoice details |
-| `POST` | `/api/invoices/audit` | Audit an invoice |
+| `GET` | `/api/invoices` | List invoices with filtering |
+| `GET` | `/api/invoices/{id}` | Get invoice details with line items |
+| `POST` | `/api/invoices/{id}/audit` | Audit an invoice |
 | `POST` | `/api/search` | Hybrid search across documents |
 | `POST` | `/api/chat` | Send a chat message (RAG) |
 | `POST` | `/api/chat/stream` | Stream a chat response |
-| `GET` | `/api/sessions` | List chat sessions |
-| `GET` | `/api/sessions/{id}/messages` | Get session messages |
+
+### Catalog & Materials
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/catalog` | List materials with search |
+| `POST` | `/api/catalog` | Create a new material |
+| `GET` | `/api/catalog/{id}/matches` | Get fuzzy matches for a material |
+| `POST` | `/api/amazon-import` | Import materials from Amazon URLs |
+
+### Inventory & Sales
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/inventory` | List inventory items |
+| `POST` | `/api/inventory` | Create inventory item |
+| `GET` | `/api/inventory/low-stock` | Get low stock alerts |
+| `GET` | `/api/sales` | List sales transactions |
+| `POST` | `/api/sales` | Record a sale |
+
+### Documents & More
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/documents/upload` | Upload and index a document |
+| `GET` | `/api/documents` | List indexed documents |
+| `GET` | `/api/company-documents` | List company documents |
+| `GET` | `/api/reminders` | List reminders |
+| `POST` | `/api/creators/proforma` | Generate proforma PDF |
 
 See [docs/api-reference.md](docs/api-reference.md) for full API documentation.
 
 ## Development
 
 ```bash
-# Run all tests (630 tests)
+# Run all backend tests (1153 tests)
 pytest -v
+
+# Run frontend tests
+cd webui && npm test
 
 # Run a specific test file
 pytest tests/unit/services/test_chat_service_session_flow.py -v
@@ -136,17 +170,20 @@ mypy src
 ```
 src/
   api/              # FastAPI routes, middleware, dependency injection
-  application/      # Use cases (upload, chat, search, audit)
+    routes/         # Invoice, catalog, inventory, sales, documents, chat, search
+  application/      # Use cases and service factories
   core/             # Entities, interfaces, exceptions, domain services
   config/           # Pydantic settings
   infrastructure/
     llm/            # Ollama and llama.cpp providers
     search/         # FAISS vector store, FTS5, hybrid search, reranker
     storage/        # SQLite stores, document storage, migrations
+    pdf/            # PDF generation (proforma invoices)
+    scrapers/       # Amazon product fetcher
 
-dashboard/
+webui/              # Material-UI React dashboard
   src/
-    pages/          # Dashboard, Upload, Invoices, InvoiceDetail, Search, Chat
+    pages/          # Dashboard, Invoices, Catalog, Inventory, Sales, Documents, Chat
     components/     # Layout, shared components
     api/            # API client
     hooks/          # Custom React hooks
@@ -156,6 +193,7 @@ tests/
   integration/      # Integration tests (real SQLite, mocked LLM)
 
 docs/               # Architecture, API reference, user guide, configuration
+tools/              # PowerShell scripts for Windows development
 ```
 
 ## Documentation
