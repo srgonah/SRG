@@ -1,13 +1,16 @@
 <#
 .SYNOPSIS
-    SRG Verification Script - Run tests, lint, and type checks in two phases.
+    SRG Verification Script - Run tests, lint, and type checks.
 
 .DESCRIPTION
     Phase 1: Non-API tests (core, unit, infrastructure)
     Phase 2: API tests (api, integration)
     Phase 3: Lint (ruff)
     Phase 4: Type check (mypy - non-fatal)
+    Phase 5: WebUI build (npm run build)
     Prints a clear PASS/FAIL summary at the end.
+
+    Uses cmd /c execution to avoid false FAILs when commands print to stderr.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\tools\verify_all.ps1
@@ -15,33 +18,41 @@
 
 $ErrorActionPreference = "Continue"
 
+# Set UTF-8 environment (fixes 'charmap' codec errors on Windows)
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 # Results tracking
 $results = @{
     "Phase1_NonAPI" = $null
     "Phase2_API" = $null
     "Phase3_Lint" = $null
     "Phase4_Mypy" = $null
+    "Phase5_WebUI" = $null
 }
 $details = @{
     "Phase1_NonAPI" = ""
     "Phase2_API" = ""
     "Phase3_Lint" = ""
     "Phase4_Mypy" = ""
+    "Phase5_WebUI" = ""
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  SRG Verification Suite" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "(UTF-8 mode enabled)" -ForegroundColor Gray
 Write-Host ""
 
 # ============================================
 # Phase 1: Non-API Tests
 # ============================================
-Write-Host "[Phase 1/4] Running non-API tests (core, unit, infrastructure)..." -ForegroundColor Yellow
+Write-Host "[Phase 1/5] Running non-API tests (core, unit, infrastructure)..." -ForegroundColor Yellow
 Write-Host ""
 
 $phase1Start = Get-Date
-# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+# Use cmd /c to avoid PowerShell NativeCommandError on stderr output
 $phase1Output = cmd /c "python -m pytest -v tests/core tests/unit tests/infrastructure 2>&1"
 $phase1Exit = $LASTEXITCODE
 $phase1Output = $phase1Output -join "`n"
@@ -71,11 +82,11 @@ Write-Host ""
 # ============================================
 # Phase 2: API Tests
 # ============================================
-Write-Host "[Phase 2/4] Running API tests (api, integration)..." -ForegroundColor Yellow
+Write-Host "[Phase 2/5] Running API tests (api, integration)..." -ForegroundColor Yellow
 Write-Host ""
 
 $phase2Start = Get-Date
-# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+# Use cmd /c to avoid PowerShell NativeCommandError on stderr output
 $phase2Output = cmd /c "python -m pytest -v tests/api tests/integration 2>&1"
 $phase2Exit = $LASTEXITCODE
 $phase2Output = $phase2Output -join "`n"
@@ -105,11 +116,11 @@ Write-Host ""
 # ============================================
 # Phase 3: Lint (ruff)
 # ============================================
-Write-Host "[Phase 3/4] Running lint (ruff check)..." -ForegroundColor Yellow
+Write-Host "[Phase 3/5] Running lint (ruff check)..." -ForegroundColor Yellow
 Write-Host ""
 
 $phase3Start = Get-Date
-# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+# Use cmd /c to avoid PowerShell NativeCommandError on stderr output
 $phase3Output = cmd /c "python -m ruff check src tests 2>&1"
 $phase3Exit = $LASTEXITCODE
 $phase3Output = $phase3Output -join "`n"
@@ -135,12 +146,12 @@ Write-Host ""
 # ============================================
 # Phase 4: Type Check (mypy) - Non-fatal
 # ============================================
-Write-Host "[Phase 4/4] Running type check (mypy)..." -ForegroundColor Yellow
+Write-Host "[Phase 4/5] Running type check (mypy)..." -ForegroundColor Yellow
 Write-Host "(Note: mypy failures do not fail the overall verification)" -ForegroundColor Gray
 Write-Host ""
 
 $phase4Start = Get-Date
-# Use cmd.exe to avoid PowerShell NativeCommandError on stderr output
+# Use cmd /c to avoid PowerShell NativeCommandError on stderr output
 $phase4Output = cmd /c "python -m mypy src 2>&1"
 $phase4Exit = $LASTEXITCODE
 $phase4Output = $phase4Output -join "`n"
@@ -170,6 +181,51 @@ if ($phase4Exit -eq 0 -or $successMatch) {
 Write-Host ""
 
 # ============================================
+# Phase 5: WebUI Build
+# ============================================
+Write-Host "[Phase 5/5] Building WebUI (npm run build)..." -ForegroundColor Yellow
+Write-Host ""
+
+$WebuiDir = Join-Path $PSScriptRoot "..\webui"
+$npmPath = Get-Command npm -ErrorAction SilentlyContinue
+
+if (-not (Test-Path $WebuiDir)) {
+    $results["Phase5_WebUI"] = $true
+    Write-Host "  SKIPPED: webui/ directory not found." -ForegroundColor Gray
+    $details["Phase5_WebUI"] = "skipped (no webui/)"
+} elseif (-not $npmPath) {
+    $results["Phase5_WebUI"] = $true
+    Write-Host "  SKIPPED: npm not found." -ForegroundColor Gray
+    $details["Phase5_WebUI"] = "skipped (no npm)"
+} else {
+    $phase5Start = Get-Date
+    $savedDir = Get-Location
+    Set-Location $WebuiDir
+
+    # Use cmd /c to avoid PowerShell NativeCommandError on stderr output
+    $phase5Output = cmd /c "npm run build 2>&1"
+    $phase5Exit = $LASTEXITCODE
+
+    Set-Location $savedDir
+    $phase5Output = $phase5Output -join "`n"
+    $phase5Duration = [math]::Round(((Get-Date) - $phase5Start).TotalSeconds, 1)
+
+    if ($phase5Exit -eq 0) {
+        $results["Phase5_WebUI"] = $true
+        Write-Host "  PASSED: WebUI built successfully in ${phase5Duration}s" -ForegroundColor Green
+        $details["Phase5_WebUI"] = "built in ${phase5Duration}s"
+    } else {
+        $results["Phase5_WebUI"] = $false
+        Write-Host "  FAILED: WebUI build failed in ${phase5Duration}s" -ForegroundColor Red
+        $details["Phase5_WebUI"] = "build failed"
+        $phase5Output -split "`n" | Select-Object -Last 10 | ForEach-Object {
+            Write-Host "    $_" -ForegroundColor Red
+        }
+    }
+}
+Write-Host ""
+
+# ============================================
 # Summary
 # ============================================
 Write-Host "========================================" -ForegroundColor Cyan
@@ -177,7 +233,7 @@ Write-Host "  VERIFICATION SUMMARY" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$allPassed = $results["Phase1_NonAPI"] -and $results["Phase2_API"] -and $results["Phase3_Lint"]
+$allPassed = $results["Phase1_NonAPI"] -and $results["Phase2_API"] -and $results["Phase3_Lint"] -and $results["Phase5_WebUI"]
 # Note: mypy is informational, not blocking
 
 Write-Host "  Phase 1 (Non-API Tests):  " -NoNewline
@@ -211,6 +267,14 @@ if ($results["Phase4_Mypy"]) {
     Write-Host "INFO" -ForegroundColor Yellow -NoNewline
 }
 Write-Host "  [$($details["Phase4_Mypy"])]" -ForegroundColor Gray
+
+Write-Host "  Phase 5 (WebUI Build):    " -NoNewline
+if ($results["Phase5_WebUI"]) {
+    Write-Host "PASS" -ForegroundColor Green -NoNewline
+} else {
+    Write-Host "FAIL" -ForegroundColor Red -NoNewline
+}
+Write-Host "  [$($details["Phase5_WebUI"])]" -ForegroundColor Gray
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan

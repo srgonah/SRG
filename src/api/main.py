@@ -17,9 +17,11 @@ from starlette.responses import Response
 from src.api.middleware import ErrorHandlerMiddleware, LoggingMiddleware
 from src.api.middleware.error_handler import setup_exception_handlers
 from src.api.routes import (
+    amazon_import_router,
     catalog_router,
     chat_router,
     company_documents_router,
+    creators_router,
     documents_router,
     health_router,
     inventory_router,
@@ -29,6 +31,7 @@ from src.api.routes import (
     sales_router,
     search_router,
     sessions_router,
+    templates_router,
 )
 from src.config import get_logger, get_settings
 
@@ -170,6 +173,9 @@ def create_app() -> FastAPI:
     app.include_router(reminders_router)
     app.include_router(inventory_router)
     app.include_router(sales_router)
+    app.include_router(amazon_import_router)
+    app.include_router(templates_router)
+    app.include_router(creators_router)
 
     # Mount static files for web UI
     # Priority: webui/dist (React SPA build) > static/ (minimal fallback)
