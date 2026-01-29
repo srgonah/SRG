@@ -8,6 +8,8 @@ NO infrastructure imports - depends only on core entities, interfaces, exception
 from datetime import datetime
 from typing import Any
 
+import numpy as np
+
 from src.core.entities.document import Chunk, Document, DocumentStatus, IndexingState, Page
 from src.core.exceptions import IndexingError
 from src.core.interfaces import (
@@ -106,7 +108,7 @@ class DocumentIndexerService:
                 chunk_ids = [c.id for c in chunks if c.id]
                 await self._vec_store.add_vectors(
                     index_name="chunks",
-                    embeddings=embeddings,
+                    embeddings=np.array(embeddings),
                     ids=chunk_ids,
                 )
 
@@ -196,7 +198,7 @@ class DocumentIndexerService:
                 if embeddings:
                     await self._vec_store.add_vectors(
                         index_name=index_name,
-                        embeddings=embeddings,
+                        embeddings=np.array(embeddings),
                         ids=chunk_ids,
                     )
 
@@ -346,7 +348,11 @@ class DocumentIndexerService:
         embeddings = self._embedder.embed_batch(texts)
 
         for chunk, embedding in zip(chunks, embeddings):
-            chunk.metadata["embedding"] = embedding
+            # Convert numpy array to list for JSON serialization
+            if hasattr(embedding, "tolist"):
+                chunk.metadata["embedding"] = embedding.tolist()
+            else:
+                chunk.metadata["embedding"] = list(embedding)
 
     async def delete_document_index(self, document_id: int) -> bool:
         """

@@ -53,7 +53,7 @@ async def upload_document(
     import tempfile
     from pathlib import Path
 
-    from src.core.entities.document import Document
+    from src.core.entities.document import Document, Page, PageType
 
     # Validate file type
     valid_extensions = (".pdf", ".txt", ".md")
@@ -74,17 +74,79 @@ async def upload_document(
         tmp_path = tmp.name
 
     try:
-        # Create document record first, then index
+        # Determine MIME type
+        ext = Path(filename).suffix.lower()
+        mime_map = {".pdf": "application/pdf", ".txt": "text/plain", ".md": "text/markdown"}
+        mime_type = mime_map.get(ext, "application/octet-stream")
+
+        # Create document record
         doc = Document(
             filename=filename,
             original_filename=filename,
             file_path=tmp_path,
             file_size=len(content),
+            mime_type=mime_type,
         )
         saved_doc = await store.create_document(doc)
         doc_id = saved_doc.id
+
         if doc_id is not None:
+            # Extract text based on file type
+            if ext in (".txt", ".md"):
+                # Plain text - decode and create single page
+                try:
+                    text_content = content.decode("utf-8")
+                except UnicodeDecodeError:
+                    text_content = content.decode("latin-1")
+
+                page = Page(
+                    doc_id=doc_id,
+                    page_no=1,
+                    page_type=PageType.OTHER,
+                    text=text_content,
+                    text_length=len(text_content),
+                )
+                await store.create_page(page)
+                saved_doc.page_count = 1
+
+            elif ext == ".pdf":
+                # PDF - extract pages using PyMuPDF if available
+                try:
+                    import fitz  # PyMuPDF
+
+                    pdf_doc = fitz.open(tmp_path)
+                    page_count = 0
+                    for page_no, pdf_page in enumerate(pdf_doc, start=1):
+                        text_content = pdf_page.get_text()
+                        page = Page(
+                            doc_id=doc_id,
+                            page_no=page_no,
+                            page_type=PageType.OTHER,
+                            text=text_content,
+                            text_length=len(text_content),
+                        )
+                        await store.create_page(page)
+                        page_count += 1
+                    pdf_doc.close()
+                    saved_doc.page_count = page_count
+                except ImportError:
+                    # PyMuPDF not available, create placeholder page
+                    page = Page(
+                        doc_id=doc_id,
+                        page_no=1,
+                        page_type=PageType.OTHER,
+                        text="[PDF content - install PyMuPDF for extraction]",
+                        text_length=0,
+                    )
+                    await store.create_page(page)
+                    saved_doc.page_count = 1
+
+            # Update document with page count
+            await store.update_document(saved_doc)
+
+            # Now index the document
             await indexer.index_document(doc_id)
+
         return _doc_to_response(saved_doc)
 
     finally:

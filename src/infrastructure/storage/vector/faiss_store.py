@@ -135,13 +135,29 @@ class FAISSVectorStore(IVectorStore):
         embeddings: np.ndarray,
         ids: list[int],
     ) -> bool:
-        """Add vectors to existing index (incremental)."""
-        index = self._get_index(index_name)
-        if index is None:
-            raise IndexNotReadyError(index_name)
-
+        """Add vectors to existing index (incremental), creating index if needed."""
         if len(embeddings) == 0:
             return True
+
+        index = self._get_index(index_name)
+
+        # Create index if it doesn't exist
+        if index is None:
+            path = self._index_paths.get(index_name)
+            if not path:
+                raise ValueError(f"Unknown index: {index_name}")
+
+            dimension = embeddings.shape[1]
+            index = faiss.IndexFlatIP(dimension)
+            logger.info(
+                "creating_new_index",
+                index_name=index_name,
+                dimension=dimension,
+            )
+
+            if self.use_gpu:
+                index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, index)
+            self._indexes[index_name] = index
 
         # Get current size for FAISS ID offset
         start_id = index.ntotal
