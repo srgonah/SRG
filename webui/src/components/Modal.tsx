@@ -1,26 +1,35 @@
 import type { ReactNode } from "react";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import IconButton from "@mui/material/IconButton";
+import CloseIcon from "@mui/icons-material/Close";
 
-interface Props {
+interface ModalProps {
   open: boolean;
-  onClose: () => void;
   title: string;
+  onClose: () => void;
   children: ReactNode;
+  actions?: ReactNode;
 }
 
-export default function Modal({ open, onClose, title, children }: Props) {
-  if (!open) return null;
+export default function Modal({ open, title, onClose, children, actions }: ModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-slate-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700">
-          <h2 className="font-semibold text-base">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">
-            &times;
-          </button>
-        </div>
-        <div className="p-5 overflow-y-auto flex-1">{children}</div>
-      </div>
-    </div>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        {title}
+        <IconButton
+          aria-label="close"
+          onClick={onClose}
+          size="small"
+          sx={{ ml: 2 }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>{children}</DialogContent>
+      {actions && <DialogActions>{actions}</DialogActions>}
+    </Dialog>
   );
 }

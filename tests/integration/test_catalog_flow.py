@@ -404,3 +404,190 @@ class TestCatalogFlow:
         # Only one material should exist
         materials = await mat_store.list_materials()
         assert len(materials) == 1
+
+    async def test_view_unmatched_add_to_catalog_verify_matched(self, stores):
+        """Full workflow: upload -> view unmatched -> add-to-catalog -> verify matched ids."""
+        inv_store, mat_store, price_store = stores
+
+        # 1. Create invoice with unmatched items
+        invoice = Invoice(
+            invoice_no="INV-UNMATCHED-001",
+            invoice_date="2024-03-01",
+            seller_name="Unmatched Vendor",
+            currency="AED",
+            total_amount=1000.0,
+            parsing_status=ParsingStatus.OK,
+            items=[
+                LineItem(
+                    line_number=1,
+                    item_name="Copper Wire 4mm",
+                    hs_code="7408.11",
+                    unit="M",
+                    quantity=100,
+                    unit_price=8.0,
+                    total_price=800.0,
+                    row_type=RowType.LINE_ITEM,
+                    matched_material_id=None,  # Unmatched
+                ),
+                LineItem(
+                    line_number=2,
+                    item_name="Safety Helmet",
+                    unit="PCS",
+                    quantity=10,
+                    unit_price=20.0,
+                    total_price=200.0,
+                    row_type=RowType.LINE_ITEM,
+                    matched_material_id=None,  # Unmatched
+                ),
+            ],
+        )
+        created = await inv_store.create_invoice(invoice)
+        assert created.id is not None
+
+        # 2. Verify items are unmatched (simulating GET /api/invoices/{id}/items/unmatched)
+        reloaded = await inv_store.get_invoice(created.id)
+        unmatched_items = [
+            item for item in reloaded.items
+            if item.row_type == RowType.LINE_ITEM and not item.matched_material_id
+        ]
+        assert len(unmatched_items) == 2
+
+        # 3. Add items to catalog
+        use_case = AddToCatalogUseCase(
+            invoice_store=inv_store,
+            material_store=mat_store,
+            price_store=price_store,
+        )
+        request = AddToCatalogRequest(invoice_id=created.id)
+        result = await use_case.execute(request)
+
+        assert result.materials_created == 2
+        assert len(result.materials) == 2
+
+        # 4. Verify items now have matched_material_id set
+        final_invoice = await inv_store.get_invoice(created.id)
+        line_items = [
+            item for item in final_invoice.items
+            if item.row_type == RowType.LINE_ITEM
+        ]
+
+        for item in line_items:
+            assert item.matched_material_id is not None, (
+                f"Item '{item.item_name}' should have matched_material_id after add-to-catalog"
+            )
+
+        # 5. Verify materials exist in catalog with correct data
+        copper = await mat_store.find_by_normalized_name("copper wire 4mm")
+        assert copper is not None
+        assert copper.hs_code == "7408.11"
+        assert copper.unit == "M"
+
+        helmet = await mat_store.find_by_normalized_name("safety helmet")
+        assert helmet is not None
+        assert helmet.unit == "PCS"
+
+    async def test_fts_search_returns_suggestions(self, stores):
+        """Test that FTS5 search returns relevant suggestions for unmatched items."""
+        inv_store, mat_store, price_store = stores
+
+        # 1. First, create some materials in the catalog
+        from src.core.entities.material import Material
+
+        cable1 = Material(
+            name="PVC Cable 2.5mm",
+            normalized_name="pvc cable 2.5mm",
+            hs_code="8544.49",
+            unit="M",
+            category="Electrical",
+        )
+        cable2 = Material(
+            name="PVC Cable 4mm",
+            normalized_name="pvc cable 4mm",
+            hs_code="8544.49",
+            unit="M",
+            category="Electrical",
+        )
+        gloves = Material(
+            name="Safety Gloves Leather",
+            normalized_name="safety gloves leather",
+            unit="PAIR",
+            category="PPE",
+        )
+
+        await mat_store.create_material(cable1)
+        await mat_store.create_material(cable2)
+        await mat_store.create_material(gloves)
+
+        # 2. Search using FTS5 (simulating the unmatched items suggestions)
+        results = await mat_store.search_by_name("PVC Cable", limit=5)
+
+        assert len(results) >= 2
+        # Results should include both PVC cables
+        names = [r.name for r in results]
+        assert any("PVC Cable 2.5mm" in n for n in names)
+        assert any("PVC Cable 4mm" in n for n in names)
+
+        # 3. Search for gloves
+        glove_results = await mat_store.search_by_name("safety gloves", limit=5)
+        assert len(glove_results) >= 1
+        assert any("Safety Gloves" in r.name for r in glove_results)
+
+    async def test_auto_match_links_existing_materials(self, stores):
+        """Test auto_match_items links items to existing materials."""
+        inv_store, mat_store, price_store = stores
+
+        # 1. Pre-create a material in catalog
+        from src.core.entities.material import Material
+
+        existing_material = Material(
+            name="Industrial Motor 5HP",
+            normalized_name="industrial motor 5hp",
+            hs_code="8501.52",
+            unit="PCS",
+        )
+        await mat_store.create_material(existing_material)
+
+        # 2. Create invoice with item matching existing material
+        invoice = Invoice(
+            invoice_no="INV-AUTOMATCH-001",
+            invoice_date="2024-04-01",
+            seller_name="Motor Supplier",
+            currency="USD",
+            total_amount=500.0,
+            parsing_status=ParsingStatus.OK,
+            items=[
+                LineItem(
+                    line_number=1,
+                    item_name="Industrial Motor 5HP",  # Exact match
+                    unit="PCS",
+                    quantity=2,
+                    unit_price=250.0,
+                    total_price=500.0,
+                    row_type=RowType.LINE_ITEM,
+                    matched_material_id=None,
+                ),
+            ],
+        )
+        created = await inv_store.create_invoice(invoice)
+
+        # 3. Run auto-match
+        use_case = AddToCatalogUseCase(
+            invoice_store=inv_store,
+            material_store=mat_store,
+            price_store=price_store,
+        )
+        auto_result = await use_case.auto_match_items(created.id)
+
+        # Should match existing material, not create new
+        assert auto_result.matched == 1
+        assert auto_result.unmatched == 0
+
+        # 4. Verify item is linked to existing material
+        final_invoice = await inv_store.get_invoice(created.id)
+        line_items = [
+            item for item in final_invoice.items
+            if item.row_type == RowType.LINE_ITEM
+        ]
+
+        assert len(line_items) == 1
+        assert line_items[0].matched_material_id == existing_material.id

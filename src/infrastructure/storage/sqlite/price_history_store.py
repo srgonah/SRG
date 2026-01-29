@@ -23,6 +23,7 @@ class SQLitePriceHistoryStore(IPriceHistoryStore):
         date_from: str | None = None,
         date_to: str | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Get price history entries with optional filters."""
         async with get_connection() as conn:
@@ -50,6 +51,7 @@ class SQLitePriceHistoryStore(IPriceHistoryStore):
                 where_clause = "WHERE " + " AND ".join(conditions)
 
             params.append(limit)
+            params.append(offset)
 
             cursor = await conn.execute(
                 f"""
@@ -64,7 +66,7 @@ class SQLitePriceHistoryStore(IPriceHistoryStore):
                 FROM item_price_history
                 {where_clause}
                 ORDER BY invoice_date DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
                 params,
             )

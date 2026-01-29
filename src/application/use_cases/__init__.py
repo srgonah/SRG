@@ -8,6 +8,7 @@ from src.application.use_cases.check_expiring_documents import (
     ExpiryCheckResult,
 )
 from src.application.use_cases.create_sales_invoice import CreateSalesInvoiceUseCase
+from src.application.use_cases.create_sales_pdf import CreateSalesPdfUseCase
 from src.application.use_cases.evaluate_reminder_insights import (
     EvaluateReminderInsightsUseCase,
     InsightEvaluationResult,
@@ -35,4 +36,5 @@ __all__ = [
     "ReceiveStockUseCase",
     "IssueStockUseCase",
     "CreateSalesInvoiceUseCase",
+    "CreateSalesPdfUseCase",
 ]

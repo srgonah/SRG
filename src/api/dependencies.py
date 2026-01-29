@@ -19,6 +19,7 @@ from src.application.use_cases import (
     ChatWithContextUseCase,
     CheckExpiringDocumentsUseCase,
     CreateSalesInvoiceUseCase,
+    CreateSalesPdfUseCase,
     EvaluateReminderInsightsUseCase,
     GenerateProformaPdfUseCase,
     IngestMaterialUseCase,
@@ -30,6 +31,7 @@ from src.application.use_cases import (
 from src.config import Settings, get_settings
 from src.core.interfaces import ILLMProvider
 from src.core.services import (
+    CatalogMatcher,
     ChatService,
     DocumentIndexerService,
     InvoiceAuditorService,
@@ -144,6 +146,12 @@ def get_add_to_catalog_use_case() -> AddToCatalogUseCase:
     return AddToCatalogUseCase()
 
 
+async def get_catalog_matcher() -> CatalogMatcher:
+    """Get catalog matcher service."""
+    mat_store = await get_material_store()
+    return CatalogMatcher(material_store=mat_store)
+
+
 # Company document store dependency
 async def get_company_doc_store() -> SQLiteCompanyDocumentStore:
     """Get company document store."""
@@ -207,6 +215,12 @@ def get_issue_stock_use_case() -> IssueStockUseCase:
 def get_create_sales_invoice_use_case() -> CreateSalesInvoiceUseCase:
     """Get create sales invoice use case."""
     return CreateSalesInvoiceUseCase()
+
+
+# Sales PDF use case dependency
+def get_create_sales_pdf_use_case() -> CreateSalesPdfUseCase:
+    """Get create sales PDF use case."""
+    return CreateSalesPdfUseCase()
 
 
 # LLM dependency

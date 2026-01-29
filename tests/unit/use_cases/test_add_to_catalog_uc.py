@@ -9,6 +9,7 @@ from src.application.use_cases.add_to_catalog import AddToCatalogUseCase
 from src.core.entities.invoice import Invoice, LineItem, RowType
 from src.core.entities.material import Material
 from src.core.exceptions import InvoiceNotFoundError
+from src.core.services.catalog_matcher import CatalogMatcher, MatchCandidate
 
 
 @pytest.fixture
@@ -25,6 +26,7 @@ def mock_material_store():
     store = AsyncMock()
     store.find_by_normalized_name = AsyncMock(return_value=None)
     store.find_by_synonym = AsyncMock(return_value=None)
+    store.list_materials = AsyncMock(return_value=[])
     return store
 
 
@@ -85,12 +87,19 @@ def sample_invoice():
 
 
 @pytest.fixture
-def use_case(mock_invoice_store, mock_material_store, mock_price_store):
+def mock_catalog_matcher(mock_material_store):
+    """Create a CatalogMatcher with the mock material store."""
+    return CatalogMatcher(material_store=mock_material_store)
+
+
+@pytest.fixture
+def use_case(mock_invoice_store, mock_material_store, mock_price_store, mock_catalog_matcher):
     """Create use case with mocked stores."""
     return AddToCatalogUseCase(
         invoice_store=mock_invoice_store,
         material_store=mock_material_store,
         price_store=mock_price_store,
+        catalog_matcher=mock_catalog_matcher,
     )
 
 
@@ -134,9 +143,10 @@ class TestAddToCatalogUseCase:
             id="mat-100", name="PVC Cable 10mm", normalized_name="pvc cable 10mm",
             hs_code="8544.42", unit="M",
         )
-        # First item found, second not found
+        # Return existing for "pvc cable 10mm", None for anything else.
+        # check_duplicate also calls find_by_normalized_name, so use a function.
         mock_material_store.find_by_normalized_name = AsyncMock(
-            side_effect=[existing, None]
+            side_effect=lambda n: existing if n == "pvc cable 10mm" else None,
         )
 
         call_count = [0]
@@ -248,3 +258,174 @@ class TestAddToCatalogUseCase:
         assert response.materials_updated == 0
         assert len(response.materials) == 1
         assert response.materials[0].name == "Widget A"
+
+
+@pytest.mark.asyncio
+class TestAutoMatchWithScoredCandidates:
+    """Tests for auto_match_items using the CatalogMatcher with scored candidates."""
+
+    async def test_auto_match_exact_links_automatically(
+        self, mock_invoice_store, mock_material_store, mock_price_store, sample_invoice
+    ):
+        """Exact match (score 1.0) is auto-linked."""
+        mock_invoice_store.get_invoice = AsyncMock(return_value=sample_invoice)
+
+        existing = Material(
+            id="mat-100",
+            name="PVC Cable 10mm",
+            normalized_name="pvc cable 10mm",
+        )
+        mock_material_store.find_by_normalized_name = AsyncMock(
+            side_effect=lambda n: existing if n == "pvc cable 10mm" else None,
+        )
+        mock_material_store.list_materials = AsyncMock(return_value=[existing])
+
+        matcher = CatalogMatcher(material_store=mock_material_store)
+        use_case = AddToCatalogUseCase(
+            invoice_store=mock_invoice_store,
+            material_store=mock_material_store,
+            price_store=mock_price_store,
+            catalog_matcher=matcher,
+        )
+
+        result = await use_case.auto_match_items(invoice_id=1)
+
+        assert result.matched >= 1
+        assert (10, "mat-100") in result.matches
+        # Candidates should be populated for each item
+        assert 10 in result.candidates
+        assert result.candidates[10][0].score == 1.0
+
+    async def test_auto_match_no_exact_returns_candidates(
+        self, mock_invoice_store, mock_material_store, mock_price_store, sample_invoice
+    ):
+        """When no exact match, item remains unmatched but candidates are returned."""
+        mock_invoice_store.get_invoice = AsyncMock(return_value=sample_invoice)
+
+        similar = Material(
+            id="mat-200",
+            name="PVC Cable 12mm",
+            normalized_name="pvc cable 12mm",
+        )
+        mock_material_store.list_materials = AsyncMock(return_value=[similar])
+
+        matcher = CatalogMatcher(material_store=mock_material_store)
+        use_case = AddToCatalogUseCase(
+            invoice_store=mock_invoice_store,
+            material_store=mock_material_store,
+            price_store=mock_price_store,
+            catalog_matcher=matcher,
+        )
+
+        result = await use_case.auto_match_items(invoice_id=1)
+
+        # PVC Cable 10mm vs 12mm should be a fuzzy match, not exact
+        assert 10 in result.candidates
+        candidates_10 = result.candidates[10]
+        assert len(candidates_10) >= 1
+        assert candidates_10[0].score < 1.0
+        assert candidates_10[0].match_type == "fuzzy"
+        # Item should be counted as unmatched
+        assert result.unmatched >= 1
+
+    async def test_auto_match_missing_invoice(
+        self, mock_invoice_store, mock_material_store, mock_price_store
+    ):
+        """Auto-match returns empty result for missing invoice."""
+        mock_invoice_store.get_invoice = AsyncMock(return_value=None)
+        mock_material_store.list_materials = AsyncMock(return_value=[])
+
+        matcher = CatalogMatcher(material_store=mock_material_store)
+        use_case = AddToCatalogUseCase(
+            invoice_store=mock_invoice_store,
+            material_store=mock_material_store,
+            price_store=mock_price_store,
+            catalog_matcher=matcher,
+        )
+
+        result = await use_case.auto_match_items(invoice_id=999)
+
+        assert result.matched == 0
+        assert result.unmatched == 0
+        assert result.candidates == {}
+
+
+@pytest.mark.asyncio
+class TestDuplicateWarnings:
+    """Tests for duplicate detection during material creation."""
+
+    async def test_duplicate_warning_included(
+        self, mock_invoice_store, mock_material_store, mock_price_store, sample_invoice
+    ):
+        """Duplicate warning is included but creation is not blocked."""
+        mock_invoice_store.get_invoice = AsyncMock(return_value=sample_invoice)
+
+        # A very similar material already exists in the catalog
+        existing = Material(
+            id="mat-existing",
+            name="PVC Cable 10mn",  # very close to "PVC Cable 10mm"
+            normalized_name="pvc cable 10mn",
+        )
+        mock_material_store.list_materials = AsyncMock(return_value=[existing])
+
+        call_count = [0]
+
+        async def mock_create(material):
+            call_count[0] += 1
+            material.id = f"mat-new-{call_count[0]}"
+            return material
+
+        mock_material_store.create_material = AsyncMock(side_effect=mock_create)
+
+        matcher = CatalogMatcher(material_store=mock_material_store)
+        use_case = AddToCatalogUseCase(
+            invoice_store=mock_invoice_store,
+            material_store=mock_material_store,
+            price_store=mock_price_store,
+            catalog_matcher=matcher,
+        )
+
+        request = AddToCatalogRequest(invoice_id=1)
+        result = await use_case.execute(request)
+
+        # Material should still be created
+        assert result.materials_created >= 1
+        # Duplicate warning should be present for the similar item
+        dup_names = [w.new_material_name for w in result.duplicate_warnings]
+        assert "PVC Cable 10mm" in dup_names
+
+    async def test_no_warning_for_different_names(
+        self, mock_invoice_store, mock_material_store, mock_price_store, sample_invoice
+    ):
+        """No duplicate warning when existing materials are very different."""
+        mock_invoice_store.get_invoice = AsyncMock(return_value=sample_invoice)
+
+        existing = Material(
+            id="mat-existing",
+            name="Completely Unrelated Widget",
+            normalized_name="completely unrelated widget",
+        )
+        mock_material_store.list_materials = AsyncMock(return_value=[existing])
+
+        call_count = [0]
+
+        async def mock_create(material):
+            call_count[0] += 1
+            material.id = f"mat-new-{call_count[0]}"
+            return material
+
+        mock_material_store.create_material = AsyncMock(side_effect=mock_create)
+
+        matcher = CatalogMatcher(material_store=mock_material_store)
+        use_case = AddToCatalogUseCase(
+            invoice_store=mock_invoice_store,
+            material_store=mock_material_store,
+            price_store=mock_price_store,
+            catalog_matcher=matcher,
+        )
+
+        request = AddToCatalogRequest(invoice_id=1)
+        result = await use_case.execute(request)
+
+        assert result.materials_created == 2
+        assert len(result.duplicate_warnings) == 0

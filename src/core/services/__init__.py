@@ -9,6 +9,7 @@ Layer-pure services that depend only on:
 NO infrastructure imports. All dependencies injected via constructor.
 """
 
+from src.core.services.catalog_matcher import CatalogMatcher, MatchCandidate
 from src.core.services.chat_service import ChatService
 from src.core.services.document_indexer import DocumentIndexerService
 from src.core.services.invoice_auditor import InvoiceAuditorService
@@ -34,6 +35,9 @@ __all__ = [
     # Material Ingestion
     "MaterialIngestionService",
     "IngestionResult",
+    # Catalog Matching
+    "CatalogMatcher",
+    "MatchCandidate",
     # Search
     "SearchService",
     "SearchContext",

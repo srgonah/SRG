@@ -1,8 +1,13 @@
 """Local sales endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 
-from src.api.dependencies import get_create_sales_invoice_use_case, get_sales_inv_store
+from src.api.dependencies import (
+    get_create_sales_invoice_use_case,
+    get_create_sales_pdf_use_case,
+    get_sales_inv_store,
+)
 from src.application.dto.requests import CreateSalesInvoiceRequest
 from src.application.dto.responses import (
     ErrorResponse,
@@ -11,6 +16,7 @@ from src.application.dto.responses import (
     SalesInvoiceListResponse,
 )
 from src.application.use_cases.create_sales_invoice import CreateSalesInvoiceUseCase
+from src.application.use_cases.create_sales_pdf import CreateSalesPdfUseCase
 from src.infrastructure.storage.sqlite import SQLiteSalesStore
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
@@ -102,3 +108,31 @@ async def get_sales_invoice(
             detail=f"Sales invoice not found: {invoice_id}",
         )
     return _entity_to_response(invoice)
+
+
+@router.get(
+    "/invoices/{invoice_id}/pdf",
+    responses={
+        404: {"model": ErrorResponse, "description": "Sales invoice not found"},
+    },
+)
+async def get_sales_invoice_pdf(
+    invoice_id: int,
+    use_case: CreateSalesPdfUseCase = Depends(get_create_sales_pdf_use_case),
+) -> Response:
+    """Generate and download a PDF for a sales invoice."""
+    try:
+        result = await use_case.execute(invoice_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+    return Response(
+        content=result.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{result.file_path}"',
+        },
+    )

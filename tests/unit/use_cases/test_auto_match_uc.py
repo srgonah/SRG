@@ -7,6 +7,7 @@ import pytest
 from src.application.use_cases.add_to_catalog import AddToCatalogUseCase, AutoMatchResult
 from src.core.entities.invoice import Invoice, LineItem, RowType
 from src.core.entities.material import Material
+from src.core.services.catalog_matcher import CatalogMatcher
 
 
 def _make_material(mid: str = "mat-001", name: str = "PVC Cable 2.5mm") -> Material:
@@ -22,6 +23,7 @@ class TestAutoMatchItems:
         invoice: Invoice | None = None,
         find_by_name: Material | None = None,
         find_by_synonym: Material | None = None,
+        all_materials: list[Material] | None = None,
     ):
         """Create mock stores with configurable returns."""
         inv_store = AsyncMock()
@@ -31,6 +33,7 @@ class TestAutoMatchItems:
         mat_store = AsyncMock()
         mat_store.find_by_normalized_name = AsyncMock(return_value=find_by_name)
         mat_store.find_by_synonym = AsyncMock(return_value=find_by_synonym)
+        mat_store.list_materials = AsyncMock(return_value=all_materials or [])
 
         price_store = AsyncMock()
         price_store.link_material = AsyncMock(return_value=1)
@@ -65,7 +68,12 @@ class TestAutoMatchItems:
 
     @pytest.mark.asyncio
     async def test_match_by_synonym(self):
-        """Should match item via synonym when normalized name doesn't match."""
+        """Synonym match (score 0.9) is returned as a candidate but not auto-linked.
+
+        With the CatalogMatcher, only exact matches (score 1.0) are
+        auto-linked.  A synonym match produces score 0.9, so the item
+        remains unmatched but candidates are populated.
+        """
         material = _make_material()
         invoice = Invoice(
             id=1,
@@ -77,13 +85,20 @@ class TestAutoMatchItems:
             invoice=invoice, find_by_name=None, find_by_synonym=material,
         )
 
+        matcher = CatalogMatcher(material_store=mat_store)
         uc = AddToCatalogUseCase(
             invoice_store=inv_store, material_store=mat_store, price_store=price_store,
+            catalog_matcher=matcher,
         )
         result = await uc.auto_match_items(1)
 
-        assert result.matched == 1
-        assert result.unmatched == 0
+        # Synonym match is not auto-linked (score < 1.0)
+        assert result.unmatched == 1
+        # But the candidate should be present for manual selection
+        assert 11 in result.candidates
+        synonym_candidates = [c for c in result.candidates[11] if c.match_type == "synonym"]
+        assert len(synonym_candidates) == 1
+        assert synonym_candidates[0].score == 0.9
 
     @pytest.mark.asyncio
     async def test_unmatched_item(self):
@@ -117,16 +132,18 @@ class TestAutoMatchItems:
             ],
         )
         inv_store, mat_store, price_store = self._make_stores(
-            invoice=invoice, find_by_name=material,
+            invoice=invoice, find_by_name=material, all_materials=[material],
         )
-        # Only first item matches by name, second returns None
+        # Return material for "pvc cable 2.5mm", None for anything else
         mat_store.find_by_normalized_name = AsyncMock(
-            side_effect=[material, None],
+            side_effect=lambda n: material if n == "pvc cable 2.5mm" else None,
         )
         mat_store.find_by_synonym = AsyncMock(return_value=None)
 
+        matcher = CatalogMatcher(material_store=mat_store)
         uc = AddToCatalogUseCase(
             invoice_store=inv_store, material_store=mat_store, price_store=price_store,
+            catalog_matcher=matcher,
         )
         result = await uc.auto_match_items(1)
 

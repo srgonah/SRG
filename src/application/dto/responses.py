@@ -385,12 +385,33 @@ class PriceStatsListResponse(BaseModel):
 # --- Add to Catalog ---
 
 
+class MatchCandidateResponse(BaseModel):
+    """A scored match candidate from the catalog matcher."""
+
+    material_id: str = Field(..., description="Matched material ID")
+    material_name: str = Field(..., description="Material name")
+    score: float = Field(..., ge=0.0, le=1.0, description="Match confidence score")
+    match_type: str = Field(..., description="Match type: exact_name, synonym, or fuzzy")
+
+
+class DuplicateWarningResponse(BaseModel):
+    """Warning about a near-duplicate material found during creation."""
+
+    new_material_name: str = Field(..., description="Name of the newly created material")
+    existing_material_id: str = Field(..., description="ID of the similar existing material")
+    existing_material_name: str = Field(..., description="Name of the similar existing material")
+    similarity_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Similarity score (0.9+ is near-duplicate)"
+    )
+
+
 class AddToCatalogResponse(BaseModel):
     """Response for add-to-catalog operation."""
 
     materials_created: int = 0
     materials_updated: int = 0
     materials: list[MaterialResponse] = Field(default_factory=list)
+    duplicate_warnings: list[DuplicateWarningResponse] = Field(default_factory=list)
 
 
 # --- Proforma PDF ---
@@ -490,6 +511,59 @@ class IngestMaterialResponse(BaseModel):
     evidence_text: str | None = Field(default=None, description="Evidence for origin inference")
 
 
+class BatchIngestItemResult(BaseModel):
+    """Result for a single URL in a batch ingest operation."""
+
+    url: str = Field(..., description="The product URL that was processed")
+    status: str = Field(
+        ...,
+        description="Processing status: 'success' or 'error'",
+        pattern="^(success|error)$",
+    )
+    material_id: str | None = Field(
+        default=None, description="Material ID if ingestion succeeded"
+    )
+    error: str | None = Field(
+        default=None, description="Error message if ingestion failed"
+    )
+
+
+class BatchIngestMaterialResponse(BaseModel):
+    """Response for batch material ingestion."""
+
+    results: list[BatchIngestItemResult] = Field(
+        ..., description="Per-URL ingestion results"
+    )
+    total: int = Field(..., description="Total URLs processed")
+    succeeded: int = Field(..., description="Number of successful ingestions")
+    failed: int = Field(..., description="Number of failed ingestions")
+
+
+class PreviewIngestResponse(BaseModel):
+    """Response for preview ingestion (parsed data without saving)."""
+
+    title: str = Field(..., description="Product title")
+    brand: str | None = Field(default=None, description="Brand name")
+    description: str | None = Field(default=None, description="Product description")
+    category: str | None = Field(default=None, description="Product category")
+    origin_country: str | None = Field(default=None, description="Country of origin")
+    origin_confidence: str = Field(default="unknown", description="Confidence in origin")
+    evidence_text: str | None = Field(default=None, description="Origin evidence text")
+    source_url: str = Field(..., description="Source URL")
+    suggested_synonyms: list[str] = Field(
+        default_factory=list, description="Suggested synonyms"
+    )
+    raw_attributes: dict[str, str] = Field(
+        default_factory=dict, description="Raw detail attributes"
+    )
+    asin: str | None = Field(default=None, description="Amazon ASIN")
+    weight: str | None = Field(default=None, description="Product weight")
+    dimensions: str | None = Field(default=None, description="Product dimensions")
+    price: str | None = Field(default=None, description="Product price")
+    rating: float | None = Field(default=None, description="Average rating")
+    num_ratings: int | None = Field(default=None, description="Number of ratings")
+
+
 # --- Inventory ---
 
 
@@ -582,6 +656,69 @@ class SalesInvoiceListResponse(BaseModel):
     total: int
 
 
+# --- Sales PDF ---
+
+
+class SalesPdfResponse(BaseModel):
+    """Response for sales invoice PDF generation."""
+
+    invoice_id: int
+    file_path: str
+    file_size: int
+
+
+# --- Catalog Match ---
+
+
+class CatalogMatchItemResponse(BaseModel):
+    """Result of matching a single invoice line item against the catalog."""
+
+    item_id: int | None = None
+    item_name: str
+    matched: bool = False
+    material_id: str | None = None
+    material_name: str | None = None
+
+
+class UnmatchedItemResponse(BaseModel):
+    """Unmatched invoice item with catalog suggestions."""
+
+    item_id: int
+    invoice_id: int
+    item_name: str
+    description: str | None = None
+    quantity: float
+    unit: str | None = None
+    unit_price: float
+    hs_code: str | None = None
+    brand: str | None = None
+    suggestions: list[CatalogSuggestionResponse] = Field(
+        default_factory=list,
+        description="FTS5-based catalog suggestions ranked by relevance",
+    )
+
+
+class UnmatchedItemsResponse(BaseModel):
+    """Response for unmatched items endpoint."""
+
+    invoice_id: str
+    total_items: int = Field(..., description="Total line items in invoice")
+    unmatched_count: int = Field(..., description="Count of unmatched items")
+    items: list[UnmatchedItemResponse] = Field(
+        default_factory=list, description="Unmatched items with suggestions"
+    )
+
+
+class CatalogMatchResponse(BaseModel):
+    """Response for invoice catalog match operation."""
+
+    invoice_id: str
+    total_items: int
+    matched: int
+    unmatched: int
+    results: list[CatalogMatchItemResponse]
+
+
 # --- Reminder Intelligence / Insights ---
 
 
@@ -608,3 +745,134 @@ class InsightsEvaluationResponse(BaseModel):
     insights: list[InsightResponse] = Field(default_factory=list)
     reminders_created: int = 0
     created_reminder_ids: list[int] = Field(default_factory=list)
+
+
+# --- Amazon Import ---
+
+
+class AmazonImportItemResponse(BaseModel):
+    """Single item from Amazon import."""
+
+    asin: str
+    title: str
+    brand: str | None = None
+    price: str | None = None
+    price_value: float | None = None
+    currency: str | None = None
+    product_url: str
+    status: str  # "saved", "skipped_duplicate", "error"
+    material_id: str | None = None
+    error_message: str | None = None
+    existing_material_id: str | None = None
+
+
+class AmazonImportResponse(BaseModel):
+    """Response for Amazon import operation."""
+
+    items_found: int
+    items_saved: int
+    items_skipped: int
+    items_error: int = 0
+    items: list[AmazonImportItemResponse] = Field(default_factory=list)
+
+
+class AmazonCategoriesResponse(BaseModel):
+    """Available Amazon categories for import."""
+
+    categories: dict[str, list[str]]
+
+
+# --- PDF Templates ---
+
+
+class TemplatePositionResponse(BaseModel):
+    """Position configuration for a template element."""
+
+    x: float
+    y: float
+    width: float | None = None
+    height: float | None = None
+    font_size: int | None = None
+    alignment: str = "left"
+
+
+class TemplatePositionsResponse(BaseModel):
+    """Positions for all dynamic elements in the template."""
+
+    company_name: TemplatePositionResponse | None = None
+    company_address: TemplatePositionResponse | None = None
+    logo: TemplatePositionResponse | None = None
+    document_title: TemplatePositionResponse | None = None
+    document_number: TemplatePositionResponse | None = None
+    document_date: TemplatePositionResponse | None = None
+    seller_info: TemplatePositionResponse | None = None
+    buyer_info: TemplatePositionResponse | None = None
+    bank_details: TemplatePositionResponse | None = None
+    items_table: TemplatePositionResponse | None = None
+    totals: TemplatePositionResponse | None = None
+    signature: TemplatePositionResponse | None = None
+    stamp: TemplatePositionResponse | None = None
+    footer: TemplatePositionResponse | None = None
+
+
+class TemplateResponse(BaseModel):
+    """PDF template response."""
+
+    id: int
+    name: str
+    description: str = ""
+    template_type: str
+    background_path: str | None = None
+    signature_path: str | None = None
+    stamp_path: str | None = None
+    logo_path: str | None = None
+    positions: TemplatePositionsResponse | None = None
+    page_size: str = "A4"
+    orientation: str = "portrait"
+    margin_top: float = 10.0
+    margin_bottom: float = 10.0
+    margin_left: float = 10.0
+    margin_right: float = 10.0
+    primary_color: str = "#000000"
+    secondary_color: str = "#666666"
+    header_font_size: int = 12
+    body_font_size: int = 10
+    is_default: bool = False
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class TemplateListResponse(BaseModel):
+    """Paginated list of templates."""
+
+    templates: list[TemplateResponse]
+    total: int
+
+
+# --- PDF Creators ---
+
+
+class GeneratedDocumentResponse(BaseModel):
+    """Response for generated PDF document."""
+
+    id: int
+    document_type: str
+    file_name: str
+    file_path: str
+    file_size: int
+    doc_id: int | None = None  # Link to documents table if indexed
+    created_at: datetime
+
+
+class CreatorResultResponse(BaseModel):
+    """Result of document creation."""
+
+    success: bool
+    document: GeneratedDocumentResponse | None = None
+    pdf_bytes: bytes | None = None  # Only included if not saved as document
+    subtotal: float
+    tax_amount: float
+    discount_amount: float
+    total_amount: float
+    error: str | None = None

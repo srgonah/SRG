@@ -108,6 +108,23 @@ class SQLiteInventoryStore(IInventoryStore):
             rows = await cursor.fetchall()
             return [self._row_to_inventory_item(row) for row in rows]
 
+    async def list_low_stock(
+        self, threshold: float = 10.0, limit: int = 100, offset: int = 0
+    ) -> list[InventoryItem]:
+        """List inventory items where quantity_on_hand is at or below the threshold."""
+        async with get_connection() as conn:
+            cursor = await conn.execute(
+                """
+                SELECT * FROM inventory_items
+                WHERE quantity_on_hand <= ?
+                ORDER BY quantity_on_hand ASC, material_id
+                LIMIT ? OFFSET ?
+                """,
+                (threshold, limit, offset),
+            )
+            rows = await cursor.fetchall()
+            return [self._row_to_inventory_item(row) for row in rows]
+
     async def add_movement(self, movement: StockMovement) -> StockMovement:
         """Record a stock movement."""
         async with get_transaction() as conn:
@@ -139,7 +156,7 @@ class SQLiteInventoryStore(IInventoryStore):
             return movement
 
     async def get_movements(
-        self, inventory_item_id: int, limit: int = 100
+        self, inventory_item_id: int, limit: int = 100, offset: int = 0
     ) -> list[StockMovement]:
         """Get movements for an inventory item, ordered by date DESC."""
         async with get_connection() as conn:
@@ -148,9 +165,9 @@ class SQLiteInventoryStore(IInventoryStore):
                 SELECT * FROM stock_movements
                 WHERE inventory_item_id = ?
                 ORDER BY movement_date DESC, id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (inventory_item_id, limit),
+                (inventory_item_id, limit, offset),
             )
             rows = await cursor.fetchall()
             return [self._row_to_movement(row) for row in rows]

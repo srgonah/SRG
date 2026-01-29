@@ -229,6 +229,15 @@ class AddToCatalogRequest(BaseModel):
     )
 
 
+class ManualMatchRequest(BaseModel):
+    """Request to manually match an invoice item to a material."""
+
+    material_id: str = Field(
+        ...,
+        description="Material catalog ID to match the item to",
+    )
+
+
 # --- Proforma PDF ---
 
 
@@ -340,6 +349,41 @@ class IngestMaterialRequest(BaseModel):
     )
 
 
+class BatchIngestMaterialRequest(BaseModel):
+    """Request to ingest materials from multiple external product URLs."""
+
+    urls: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        description="List of product page URLs (max 20)",
+        examples=[
+            [
+                "https://www.amazon.ae/dp/B09V3KXJPB",
+                "https://www.amazon.ae/dp/B08N5WRWNW",
+            ]
+        ],
+    )
+    category: str | None = Field(
+        default=None,
+        description="Optional material category override (applied to all)",
+    )
+    unit: str | None = Field(
+        default=None,
+        description="Optional unit of measure override (applied to all)",
+    )
+
+
+class PreviewIngestRequest(BaseModel):
+    """Request to preview product data from a URL without saving."""
+
+    url: str = Field(
+        ...,
+        description="Product page URL to preview",
+        examples=["https://www.amazon.ae/dp/B09V3KXJPB"],
+    )
+
+
 # --- Inventory ---
 
 
@@ -395,4 +439,221 @@ class CreateSalesInvoiceRequest(BaseModel):
     notes: str | None = Field(default=None, description="Additional notes")
     items: list[CreateSalesItemRequest] = Field(
         ..., description="Line items to sell"
+    )
+
+
+# --- Amazon Import ---
+
+
+class AmazonImportRequest(BaseModel):
+    """Request to import materials from Amazon search."""
+
+    category: str = Field(
+        ...,
+        description="Product category (e.g., Electronics, Home & Kitchen)",
+        examples=["Electronics", "Home & Kitchen", "Industrial"],
+    )
+    subcategory: str = Field(
+        default="all",
+        description="Subcategory within the category",
+        examples=["all", "Computers", "Mobile Phones", "Tools"],
+    )
+    query: str = Field(
+        default="",
+        description="Optional search query to refine results",
+        examples=["cable", "PVC pipe", "safety gloves"],
+    )
+    limit: int = Field(
+        default=20,
+        ge=1,
+        le=50,
+        description="Maximum number of items to import (1-50)",
+    )
+    unit: str | None = Field(
+        default=None,
+        description="Unit of measure to assign to imported materials",
+        examples=["PCS", "M", "KG", "L"],
+    )
+
+
+# --- PDF Templates ---
+
+
+class TemplatePositionRequest(BaseModel):
+    """Position configuration for a template element."""
+
+    x: float = Field(..., description="X coordinate in mm from left")
+    y: float = Field(..., description="Y coordinate in mm from top")
+    width: float | None = Field(default=None, description="Width in mm")
+    height: float | None = Field(default=None, description="Height in mm")
+    font_size: int | None = Field(default=None, description="Font size for text")
+    alignment: str = Field(default="left", description="Text alignment: left, center, right")
+
+
+class TemplatePositionsRequest(BaseModel):
+    """Positions for all dynamic elements in the template."""
+
+    company_name: TemplatePositionRequest | None = None
+    company_address: TemplatePositionRequest | None = None
+    logo: TemplatePositionRequest | None = None
+    document_title: TemplatePositionRequest | None = None
+    document_number: TemplatePositionRequest | None = None
+    document_date: TemplatePositionRequest | None = None
+    seller_info: TemplatePositionRequest | None = None
+    buyer_info: TemplatePositionRequest | None = None
+    bank_details: TemplatePositionRequest | None = None
+    items_table: TemplatePositionRequest | None = None
+    totals: TemplatePositionRequest | None = None
+    signature: TemplatePositionRequest | None = None
+    stamp: TemplatePositionRequest | None = None
+    footer: TemplatePositionRequest | None = None
+
+
+class CreateTemplateRequest(BaseModel):
+    """Request to create a PDF template."""
+
+    name: str = Field(..., description="Template name")
+    description: str = Field(default="", description="Template description")
+    template_type: str = Field(
+        default="proforma",
+        description="Template type: proforma, sales, quote, receipt",
+    )
+    positions: TemplatePositionsRequest | None = Field(
+        default=None, description="Element positions"
+    )
+    page_size: str = Field(default="A4", description="Page size: A4, Letter")
+    orientation: str = Field(default="portrait", description="portrait or landscape")
+    margin_top: float = Field(default=10.0, description="Top margin in mm")
+    margin_bottom: float = Field(default=10.0, description="Bottom margin in mm")
+    margin_left: float = Field(default=10.0, description="Left margin in mm")
+    margin_right: float = Field(default=10.0, description="Right margin in mm")
+    primary_color: str = Field(default="#000000", description="Primary color hex")
+    secondary_color: str = Field(default="#666666", description="Secondary color hex")
+    is_default: bool = Field(default=False, description="Set as default template")
+
+
+class UpdateTemplateRequest(BaseModel):
+    """Request to update a PDF template."""
+
+    name: str | None = None
+    description: str | None = None
+    positions: TemplatePositionsRequest | None = None
+    page_size: str | None = None
+    orientation: str | None = None
+    margin_top: float | None = None
+    margin_bottom: float | None = None
+    margin_left: float | None = None
+    margin_right: float | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+
+
+# --- PDF Creators ---
+
+
+class BankDetailsRequest(BaseModel):
+    """Bank details for document generation."""
+
+    bank_name: str = Field(..., description="Bank name")
+    account_name: str = Field(default="", description="Account holder name")
+    account_number: str = Field(default="", description="Account number")
+    iban: str = Field(default="", description="IBAN")
+    swift_code: str = Field(default="", description="SWIFT/BIC code")
+    branch: str = Field(default="", description="Branch name")
+
+
+class PartyInfoRequest(BaseModel):
+    """Party (seller/buyer) information."""
+
+    name: str = Field(..., description="Company/person name")
+    address: str = Field(default="", description="Full address")
+    phone: str = Field(default="", description="Phone number")
+    email: str = Field(default="", description="Email address")
+    tax_id: str = Field(default="", description="Tax ID / VAT number")
+
+
+class CreatorItemRequest(BaseModel):
+    """Single line item for document creation."""
+
+    description: str = Field(..., description="Item description")
+    quantity: float = Field(..., gt=0, description="Quantity")
+    unit: str = Field(default="PCS", description="Unit of measure")
+    unit_price: float = Field(..., ge=0, description="Price per unit")
+    hs_code: str | None = Field(default=None, description="HS code")
+
+
+class CreateProformaRequest(BaseModel):
+    """Request to create a proforma invoice from scratch."""
+
+    # Template
+    template_id: int | None = Field(default=None, description="Template ID to use")
+
+    # Document info
+    document_number: str = Field(..., description="Proforma number")
+    document_date: str = Field(..., description="Date in YYYY-MM-DD format")
+    valid_until: str | None = Field(default=None, description="Validity date")
+
+    # Parties
+    seller: PartyInfoRequest = Field(..., description="Seller information")
+    buyer: PartyInfoRequest = Field(..., description="Buyer information")
+
+    # Bank details
+    bank_details: BankDetailsRequest | None = Field(
+        default=None, description="Bank details for payment"
+    )
+
+    # Items
+    items: list[CreatorItemRequest] = Field(..., description="Line items")
+
+    # Financial
+    currency: str = Field(default="AED", description="Currency code")
+    tax_rate: float = Field(default=0.0, ge=0, le=100, description="Tax rate percentage")
+    discount_amount: float = Field(default=0.0, ge=0, description="Discount amount")
+
+    # Notes
+    notes: str = Field(default="", description="Additional notes")
+    terms: str = Field(default="", description="Terms and conditions")
+
+    # Output options
+    save_as_document: bool = Field(
+        default=True, description="Save generated PDF to documents"
+    )
+
+
+class CreateSalesDocumentRequest(BaseModel):
+    """Request to create a sales invoice document from scratch."""
+
+    # Template
+    template_id: int | None = Field(default=None, description="Template ID to use")
+
+    # Document info
+    invoice_number: str = Field(..., description="Invoice number")
+    invoice_date: str = Field(..., description="Date in YYYY-MM-DD format")
+
+    # Parties
+    seller: PartyInfoRequest = Field(..., description="Seller information")
+    buyer: PartyInfoRequest = Field(..., description="Buyer/customer information")
+
+    # Bank details
+    bank_details: BankDetailsRequest | None = Field(
+        default=None, description="Bank details for payment"
+    )
+
+    # Items
+    items: list[CreatorItemRequest] = Field(..., description="Line items")
+
+    # Financial
+    currency: str = Field(default="AED", description="Currency code")
+    tax_rate: float = Field(default=0.0, ge=0, le=100, description="Tax rate percentage")
+    discount_amount: float = Field(default=0.0, ge=0, description="Discount amount")
+
+    # Notes
+    notes: str = Field(default="", description="Additional notes")
+    payment_terms: str = Field(default="", description="Payment terms")
+
+    # Output options
+    save_as_document: bool = Field(
+        default=True, description="Save generated PDF to documents"
     )

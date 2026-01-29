@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from src.application.dto.requests import AddToCatalogRequest
 from src.application.dto.responses import (
     AddToCatalogResponse,
+    DuplicateWarningResponse,
     MaterialResponse,
 )
 from src.config import get_logger
@@ -16,6 +17,7 @@ from src.core.entities.invoice import RowType
 from src.core.entities.material import Material
 from src.core.exceptions import InvoiceNotFoundError
 from src.core.interfaces.storage import IInvoiceStore, IMaterialStore, IPriceHistoryStore
+from src.core.services.catalog_matcher import CatalogMatcher, MatchCandidate
 
 logger = get_logger(__name__)
 
@@ -28,6 +30,18 @@ class AutoMatchResult:
     unmatched: int = 0
     matches: list[tuple[int, str]] = field(default_factory=list)
     """List of (item_id, material_id) pairs for matched items."""
+    candidates: dict[int, list[MatchCandidate]] = field(default_factory=dict)
+    """Mapping of item_id -> list of scored match candidates."""
+
+
+@dataclass
+class DuplicateWarning:
+    """Warning about a near-duplicate material found during creation."""
+
+    new_material_name: str
+    existing_material_id: str
+    existing_material_name: str
+    similarity_score: float
 
 
 @dataclass
@@ -37,6 +51,7 @@ class AddToCatalogResult:
     materials_created: int = 0
     materials_updated: int = 0
     materials: list[Material] = field(default_factory=list)
+    duplicate_warnings: list[DuplicateWarning] = field(default_factory=list)
 
 
 class AddToCatalogUseCase:
@@ -55,10 +70,12 @@ class AddToCatalogUseCase:
         invoice_store: IInvoiceStore | None = None,
         material_store: IMaterialStore | None = None,
         price_store: IPriceHistoryStore | None = None,
+        catalog_matcher: CatalogMatcher | None = None,
     ):
         self._invoice_store = invoice_store
         self._material_store = material_store
         self._price_store = price_store
+        self._catalog_matcher = catalog_matcher
 
     async def _get_invoice_store(self) -> IInvoiceStore:
         if self._invoice_store is None:
@@ -81,24 +98,35 @@ class AddToCatalogUseCase:
             self._price_store = await get_price_history_store()
         return self._price_store
 
+    async def _get_catalog_matcher(self) -> CatalogMatcher:
+        if self._catalog_matcher is None:
+            mat_store = await self._get_material_store()
+            self._catalog_matcher = CatalogMatcher(material_store=mat_store)
+        return self._catalog_matcher
+
     async def auto_match_items(self, invoice_id: int) -> AutoMatchResult:
         """
         Automatically match invoice line items to existing materials.
 
-        Unlike execute(), this method only matches — it never creates new
+        Uses the CatalogMatcher to find scored candidates for each item.
+        If a single exact match (score 1.0) is found, it is auto-linked.
+        Otherwise, candidates are returned for manual selection.
+
+        Unlike execute(), this method only matches -- it never creates new
         materials. Unmatched items remain with needs_catalog=True.
 
         Args:
             invoice_id: Invoice whose items to match.
 
         Returns:
-            AutoMatchResult with match/unmatch counts and matched pairs.
+            AutoMatchResult with match/unmatch counts, matched pairs,
+            and scored candidates per item.
         """
         logger.info("auto_match_started", invoice_id=invoice_id)
 
         inv_store = await self._get_invoice_store()
-        mat_store = await self._get_material_store()
         price_store = await self._get_price_store()
+        matcher = await self._get_catalog_matcher()
 
         invoice = await inv_store.get_invoice(invoice_id)
         if invoice is None:
@@ -114,18 +142,19 @@ class AddToCatalogUseCase:
                 result.unmatched += 1
                 continue
 
-            # Try to find existing material
-            existing = await mat_store.find_by_normalized_name(normalized)
-            if existing is None:
-                existing = await mat_store.find_by_synonym(normalized)
+            # Use the CatalogMatcher for scored candidates
+            candidates = await matcher.find_matches(item.item_name, top_k=5)
+            item_id = item.id or 0
+            result.candidates[item_id] = candidates
 
-            if existing is not None and existing.id is not None:
-                # Match found — link item to material
+            # Auto-link if there is a single exact match
+            if candidates and candidates[0].score == 1.0:
+                best = candidates[0]
                 if item.id is not None:
-                    await inv_store.update_item_material_id(item.id, existing.id)
-                    await price_store.link_material(existing.id, normalized)
+                    await inv_store.update_item_material_id(item.id, best.material_id)
+                    await price_store.link_material(best.material_id, normalized)
                 result.matched += 1
-                result.matches.append((item.id or 0, existing.id))
+                result.matches.append((item_id, best.material_id))
             else:
                 result.unmatched += 1
 
@@ -144,6 +173,7 @@ class AddToCatalogUseCase:
         inv_store = await self._get_invoice_store()
         mat_store = await self._get_material_store()
         price_store = await self._get_price_store()
+        matcher = await self._get_catalog_matcher()
 
         # 1. Get invoice
         invoice = await inv_store.get_invoice(request.invoice_id)
@@ -187,7 +217,26 @@ class AddToCatalogUseCase:
                 result.materials_updated += 1
                 result.materials.append(existing)
             else:
-                # Create new material
+                # Check for near-duplicates before creating
+                duplicate = await matcher.check_duplicate(item.item_name)
+                if duplicate is not None:
+                    logger.warning(
+                        "near_duplicate_detected",
+                        new_name=item.item_name,
+                        existing_id=duplicate.material_id,
+                        existing_name=duplicate.material_name,
+                        score=duplicate.score,
+                    )
+                    result.duplicate_warnings.append(
+                        DuplicateWarning(
+                            new_material_name=item.item_name,
+                            existing_material_id=duplicate.material_id,
+                            existing_material_name=duplicate.material_name,
+                            similarity_score=duplicate.score,
+                        )
+                    )
+
+                # Create new material (do NOT block creation)
                 material = Material(
                     name=item.item_name,
                     normalized_name=normalized,
@@ -208,6 +257,7 @@ class AddToCatalogUseCase:
             "add_to_catalog_complete",
             created=result.materials_created,
             updated=result.materials_updated,
+            duplicate_warnings=len(result.duplicate_warnings),
         )
         return result
 
@@ -230,5 +280,14 @@ class AddToCatalogUseCase:
                     updated_at=m.updated_at,
                 )
                 for m in result.materials
+            ],
+            duplicate_warnings=[
+                DuplicateWarningResponse(
+                    new_material_name=w.new_material_name,
+                    existing_material_id=w.existing_material_id,
+                    existing_material_name=w.existing_material_name,
+                    similarity_score=w.similarity_score,
+                )
+                for w in result.duplicate_warnings
             ],
         )

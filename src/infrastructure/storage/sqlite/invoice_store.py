@@ -361,6 +361,35 @@ class SQLiteInvoiceStore(IInvoiceStore):
             rows = await cursor.fetchall()
             return [self._row_to_audit_result(row) for row in rows]
 
+    async def get_invoice_item(self, item_id: int) -> dict[str, Any] | None:
+        """Get a single invoice item by ID."""
+        async with get_connection() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM invoice_items WHERE id = ?",
+                (item_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                "id": row["id"],
+                "invoice_id": row["invoice_id"],
+                "line_number": row["line_number"],
+                "item_name": row["item_name"],
+                "description": row["description"],
+                "hs_code": row["hs_code"],
+                "unit": row["unit"],
+                "brand": row["brand"],
+                "model": row["model"],
+                "quantity": row["quantity"],
+                "unit_price": row["unit_price"],
+                "total_price": row["total_price"],
+                "row_type": row["row_type"],
+                "matched_material_id": row["matched_material_id"]
+                if "matched_material_id" in row.keys()
+                else None,
+            }
+
     async def update_item_material_id(
         self, item_id: int, material_id: str
     ) -> bool:

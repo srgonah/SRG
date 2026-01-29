@@ -85,16 +85,49 @@ async def get_inventory_status(
 
 
 @router.get(
+    "/low-stock",
+    response_model=InventoryStatusResponse,
+)
+async def get_low_stock(
+    threshold: float = 10.0,
+    limit: int = 100,
+    offset: int = 0,
+    store: SQLiteInventoryStore = Depends(get_inv_item_store),
+) -> InventoryStatusResponse:
+    """Get inventory items at or below the given stock threshold."""
+    items = await store.list_low_stock(
+        threshold=threshold, limit=limit, offset=offset,
+    )
+    return InventoryStatusResponse(
+        items=[
+            InventoryItemResponse(
+                id=item.id,  # type: ignore[arg-type]
+                material_id=item.material_id,
+                quantity_on_hand=item.quantity_on_hand,
+                avg_cost=item.avg_cost,
+                total_value=item.total_value,
+                last_movement_date=item.last_movement_date,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+            for item in items
+        ],
+        total=len(items),
+    )
+
+
+@router.get(
     "/{item_id}/movements",
     response_model=list[StockMovementResponse],
 )
 async def get_movements(
     item_id: int,
     limit: int = 100,
+    offset: int = 0,
     store: SQLiteInventoryStore = Depends(get_inv_item_store),
 ) -> list[StockMovementResponse]:
     """Get stock movements for an inventory item."""
-    movements = await store.get_movements(item_id, limit=limit)
+    movements = await store.get_movements(item_id, limit=limit, offset=offset)
     return [
         StockMovementResponse(
             id=m.id,  # type: ignore[arg-type]

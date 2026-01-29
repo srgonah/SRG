@@ -17,8 +17,20 @@ How invoice line items become materials in the catalog.
    (items show matched_material_id, needs_catalog, catalog_suggestions)
        |
        v
-4. Add Unmatched to        POST /api/catalog/
-   Catalog                 body: { "invoice_id": N, "item_ids": [10, 11] }
+4a. View Unmatched Items   GET  /api/invoices/{id}/items/unmatched
+    (focused list with FTS5 suggestions)
+       |
+       v
+4b. Auto-Match to Catalog  POST /api/invoices/{id}/match-catalog
+    (matches items against existing catalog entries)
+       |
+       v
+4c. Manual Match           POST /api/invoices/{id}/items/{item_id}/match
+    (link single item to specific material)
+       |
+       v
+4d. Add Unmatched to       POST /api/catalog/
+    Catalog                body: { "invoice_id": N, "item_ids": [10, 11] }
        |
        v
 5. Verify                  GET  /api/invoices/{id}     -> items now matched
@@ -82,7 +94,99 @@ Example item:
 }
 ```
 
-### 3. Add selected items to the catalog
+### 3. View unmatched items with suggestions
+
+Get a focused list of unmatched items with FTS5-based catalog suggestions:
+
+```bash
+curl http://localhost:8000/api/invoices/{invoice_id}/items/unmatched
+```
+
+Response:
+
+```json
+{
+  "invoice_id": "1",
+  "total_items": 5,
+  "unmatched_count": 2,
+  "items": [
+    {
+      "item_id": 10,
+      "invoice_id": 1,
+      "item_name": "PVC Cable 10mm",
+      "description": null,
+      "quantity": 100,
+      "unit": "M",
+      "unit_price": 5.0,
+      "hs_code": "8544.42",
+      "brand": null,
+      "suggestions": [
+        {
+          "material_id": "abc-123",
+          "name": "PVC Cable 10mm",
+          "normalized_name": "pvc cable 10mm",
+          "hs_code": "8544.42",
+          "unit": "M"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 4. Auto-match against existing catalog
+
+Attempt to automatically match items against existing catalog entries:
+
+```bash
+curl -X POST http://localhost:8000/api/invoices/{invoice_id}/match-catalog
+```
+
+This finds exact matches (by normalized name or synonym) and links them
+without creating new materials. Items that can't be matched remain unmatched.
+
+Response:
+
+```json
+{
+  "invoice_id": "1",
+  "total_items": 5,
+  "matched": 3,
+  "unmatched": 2,
+  "results": [
+    {
+      "item_id": 10,
+      "item_name": "PVC Cable 10mm",
+      "matched": true,
+      "material_id": "abc-123"
+    }
+  ]
+}
+```
+
+### 5. Manual match a single item
+
+Link a specific item to a specific material:
+
+```bash
+curl -X POST http://localhost:8000/api/invoices/{invoice_id}/items/{item_id}/match \
+  -H "Content-Type: application/json" \
+  -d '{"material_id": "abc-123"}'
+```
+
+Response:
+
+```json
+{
+  "item_id": 10,
+  "invoice_id": 1,
+  "item_name": "PVC Cable 10mm",
+  "matched_material_id": "abc-123",
+  "material_name": "PVC Cable 10mm"
+}
+```
+
+### 6. Add selected items to the catalog
 
 Pick the items with `needs_catalog: true` and call:
 
@@ -161,8 +265,11 @@ curl "http://localhost:8000/api/prices/history?item=pvc+cable&seller=ACME"
 |--------|------|---------|
 | POST | `/api/invoices/upload` | Upload + parse + auto-audit |
 | GET | `/api/invoices/{id}` | Invoice detail with catalog info per item |
+| GET | `/api/invoices/{id}/items/unmatched` | List unmatched items with FTS5 suggestions |
 | POST | `/api/invoices/{id}/audit` | Audit invoice |
-| POST | `/api/catalog/` | Add invoice items to catalog |
+| POST | `/api/invoices/{id}/match-catalog` | Auto-match items to existing catalog |
+| POST | `/api/invoices/{id}/items/{item_id}/match` | Manual match item to material |
+| POST | `/api/catalog/` | Add invoice items to catalog (creates new materials) |
 | GET | `/api/catalog/` | List/search materials |
 | GET | `/api/catalog/{material_id}` | Material detail + synonyms |
 | GET | `/api/prices/history` | Price history (filters: item, seller, dates) |

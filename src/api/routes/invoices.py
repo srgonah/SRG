@@ -8,22 +8,32 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
 from src.api.dependencies import (
+    get_add_to_catalog_use_case,
     get_audit_invoice_use_case,
     get_generate_proforma_pdf_use_case,
     get_inv_store,
     get_mat_store,
     get_upload_invoice_use_case,
 )
-from src.application.dto.requests import AuditInvoiceRequest, UploadInvoiceRequest
+from src.application.dto.requests import (
+    AuditInvoiceRequest,
+    ManualMatchRequest,
+    UploadInvoiceRequest,
+)
 from src.application.dto.responses import (
     AuditFindingResponse,
     AuditResultResponse,
+    CatalogMatchItemResponse,
+    CatalogMatchResponse,
     CatalogSuggestionResponse,
     ErrorResponse,
     InvoiceResponse,
     LineItemResponse,
+    UnmatchedItemResponse,
+    UnmatchedItemsResponse,
 )
 from src.application.use_cases import (
+    AddToCatalogUseCase,
     AuditInvoiceUseCase,
     GenerateProformaPdfUseCase,
     UploadInvoiceUseCase,
@@ -152,6 +162,48 @@ async def generate_proforma_pdf(
     )
 
 
+@router.post(
+    "/{invoice_id}/proforma-preview",
+    responses={
+        404: {"model": ErrorResponse, "description": "Invoice or audit not found"},
+    },
+)
+async def proforma_preview(
+    invoice_id: str,
+    use_case: GenerateProformaPdfUseCase = Depends(get_generate_proforma_pdf_use_case),
+) -> Response:
+    """
+    Generate a proforma PDF preview for inline display.
+
+    Returns the raw PDF bytes with ``Content-Type: application/pdf``.
+    The frontend can render the PDF inline using a library such as
+    pdf.js or an ``<iframe>``.
+
+    Why PDF instead of an image?
+    Converting a PDF page to a raster image (PNG) requires a heavy
+    dependency such as PyMuPDF or pdf2image (which needs Poppler).
+    To keep the dependency tree light we return the PDF directly and
+    let the frontend handle rendering.  The ``Content-Disposition``
+    header is set to ``inline`` so browsers will attempt to display
+    it rather than download it.
+    """
+    try:
+        result = await use_case.execute(int(invoice_id))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+    return Response(
+        content=result.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="preview_{result.file_path}"',
+        },
+    )
+
+
 @router.get(
     "/{invoice_id}",
     response_model=InvoiceResponse,
@@ -236,6 +288,93 @@ async def get_invoice(
         source_file=None,
         parsed_at=invoice.created_at,
         confidence=invoice.confidence,
+    )
+
+
+@router.get(
+    "/{invoice_id}/items/unmatched",
+    response_model=UnmatchedItemsResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Invoice not found"},
+    },
+)
+async def get_unmatched_items(
+    invoice_id: str,
+    store: SQLiteInvoiceStore = Depends(get_inv_store),
+    mat_store: SQLiteMaterialStore = Depends(get_mat_store),
+) -> UnmatchedItemsResponse:
+    """
+    Get unmatched line items for an invoice with catalog suggestions.
+
+    Returns items where matched_material_id is NULL, along with FTS5-based
+    suggestions from the materials catalog for each item.
+    """
+    try:
+        invoice = await store.get_invoice(int(invoice_id))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
+
+    if not invoice:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
+
+    unmatched_items: list[UnmatchedItemResponse] = []
+    total_line_items = 0
+
+    for item in invoice.items:
+        # Only consider actual line items
+        if item.row_type != RowType.LINE_ITEM:
+            continue
+
+        total_line_items += 1
+
+        # Skip already matched items
+        if item.matched_material_id:
+            continue
+
+        # Get FTS5 suggestions for this item
+        suggestions: list[CatalogSuggestionResponse] = []
+        if item.item_name.strip():
+            try:
+                candidates = await mat_store.search_by_name(item.item_name, limit=5)
+                suggestions = [
+                    CatalogSuggestionResponse(
+                        material_id=m.id or "",
+                        name=m.name,
+                        normalized_name=m.normalized_name,
+                        hs_code=m.hs_code,
+                        unit=m.unit,
+                    )
+                    for m in candidates
+                ]
+            except Exception:
+                pass  # FTS may fail on odd queries
+
+        unmatched_items.append(
+            UnmatchedItemResponse(
+                item_id=item.id or 0,
+                invoice_id=invoice.id or 0,
+                item_name=item.item_name,
+                description=item.description,
+                quantity=item.quantity,
+                unit=item.unit,
+                unit_price=item.unit_price,
+                hs_code=item.hs_code,
+                brand=item.brand,
+                suggestions=suggestions,
+            )
+        )
+
+    return UnmatchedItemsResponse(
+        invoice_id=invoice_id,
+        total_items=total_line_items,
+        unmatched_count=len(unmatched_items),
+        items=unmatched_items,
     )
 
 
@@ -336,3 +475,140 @@ async def get_invoice_audits(
         )
         for ar in audits
     ]
+
+
+@router.post(
+    "/{invoice_id}/items/{item_id}/match",
+    response_model=dict,
+    responses={
+        404: {"model": ErrorResponse, "description": "Invoice item or material not found"},
+    },
+)
+async def manual_match_item(
+    invoice_id: str,
+    item_id: int,
+    request: ManualMatchRequest,
+    store: SQLiteInvoiceStore = Depends(get_inv_store),
+    mat_store: SQLiteMaterialStore = Depends(get_mat_store),
+) -> dict[str, Any]:
+    """
+    Manually match an invoice item to a material.
+
+    Overrides any existing auto-match for the item.
+    """
+    # Validate invoice exists
+    try:
+        invoice = await store.get_invoice(int(invoice_id))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
+    if invoice is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
+
+    # Validate item exists and belongs to this invoice
+    item_data = await store.get_invoice_item(item_id)
+    if item_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice item not found: {item_id}",
+        )
+    if item_data["invoice_id"] != int(invoice_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Item {item_id} does not belong to invoice {invoice_id}",
+        )
+
+    # Validate material exists
+    material = await mat_store.get_material(request.material_id)
+    if material is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Material not found: {request.material_id}",
+        )
+
+    # Perform the match
+    updated = await store.update_item_material_id(item_id, request.material_id)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Failed to update item {item_id}",
+        )
+
+    # Return updated item data
+    item_data["matched_material_id"] = request.material_id
+    return {
+        "item_id": item_data["id"],
+        "invoice_id": item_data["invoice_id"],
+        "item_name": item_data["item_name"],
+        "matched_material_id": request.material_id,
+        "material_name": material.name,
+    }
+
+
+@router.post(
+    "/{invoice_id}/match-catalog",
+    response_model=CatalogMatchResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Invoice not found"},
+    },
+)
+async def match_catalog(
+    invoice_id: str,
+    use_case: AddToCatalogUseCase = Depends(get_add_to_catalog_use_case),
+    store: SQLiteInvoiceStore = Depends(get_inv_store),
+) -> CatalogMatchResponse:
+    """
+    Auto-match invoice line items against the materials catalog.
+
+    Attempts to find matching materials for each line item
+    using normalized name and synonym lookup. Does not create
+    new materials; only matches against existing catalog entries.
+    """
+    try:
+        inv_id = int(invoice_id)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
+
+    # Verify invoice exists
+    invoice = await store.get_invoice(inv_id)
+    if invoice is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice not found: {invoice_id}",
+        )
+
+    # Run auto-match
+    result = await use_case.auto_match_items(inv_id)
+
+    # Build per-item results from the invoice line items
+    match_map = {item_id: mat_id for item_id, mat_id in result.matches}
+    items_response: list[CatalogMatchItemResponse] = []
+
+    for item in invoice.items:
+        if item.row_type != RowType.LINE_ITEM:
+            continue
+        matched_material_id = match_map.get(item.id or 0)
+        items_response.append(
+            CatalogMatchItemResponse(
+                item_id=item.id,
+                item_name=item.item_name,
+                matched=matched_material_id is not None,
+                material_id=matched_material_id,
+            )
+        )
+
+    return CatalogMatchResponse(
+        invoice_id=invoice_id,
+        total_items=result.matched + result.unmatched,
+        matched=result.matched,
+        unmatched=result.unmatched,
+        results=items_response,
+    )

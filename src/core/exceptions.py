@@ -88,6 +88,49 @@ class MaterialNotFoundError(CatalogError):
         )
 
 
+# Fetch Exceptions (sub-types of CatalogError)
+class FetchError(CatalogError):
+    """Base exception for product page fetching errors."""
+
+    pass
+
+
+class FetchNetworkError(FetchError):
+    """Network-level error when fetching a product page (timeout, DNS, connection)."""
+
+    def __init__(self, url: str, reason: str):
+        super().__init__(
+            f"Network error fetching {url}: {reason}",
+            code="FETCH_NETWORK_ERROR",
+            details={"url": url, "reason": reason},
+        )
+
+
+class FetchBlockedError(FetchError):
+    """Request was blocked by the target site (403, captcha, bot detection)."""
+
+    def __init__(self, url: str, status_code: int | None = None):
+        msg = f"Request blocked for {url}"
+        if status_code:
+            msg += f" (HTTP {status_code})"
+        super().__init__(
+            msg,
+            code="FETCH_BLOCKED",
+            details={"url": url, "status_code": status_code},
+        )
+
+
+class FetchParseError(FetchError):
+    """Failed to parse the fetched HTML into product data."""
+
+    def __init__(self, url: str, reason: str):
+        super().__init__(
+            f"Parse error for {url}: {reason}",
+            code="FETCH_PARSE_ERROR",
+            details={"url": url, "reason": reason},
+        )
+
+
 class DuplicateDocumentError(StorageError):
     """Document with same hash already exists."""
 

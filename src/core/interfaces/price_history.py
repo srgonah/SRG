@@ -23,6 +23,7 @@ class IPriceHistoryStore(ABC):
         date_from: str | None = None,
         date_to: str | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Get price history entries with optional filters."""
         pass

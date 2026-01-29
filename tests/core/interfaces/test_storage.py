@@ -120,6 +120,7 @@ class TestIInvoiceStoreInterface:
             "create_audit_result",
             "get_audit_result",
             "list_audit_results",
+            "get_invoice_item",
             "get_items_for_indexing",
             "update_item_material_id",
             "list_unmatched_items",

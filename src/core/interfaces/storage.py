@@ -182,6 +182,11 @@ class IInvoiceStore(ABC):
 
     # Item operations
     @abstractmethod
+    async def get_invoice_item(self, item_id: int) -> dict[str, Any] | None:
+        """Get a single invoice item by ID. Returns dict or None."""
+        pass
+
+    @abstractmethod
     async def update_item_material_id(
         self, item_id: int, material_id: str
     ) -> bool:

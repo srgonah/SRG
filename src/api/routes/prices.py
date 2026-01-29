@@ -23,6 +23,7 @@ async def get_price_history(
     date_from: str | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
     date_to: str | None = Query(default=None, description="End date (YYYY-MM-DD)"),
     limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     store: SQLitePriceHistoryStore = Depends(get_price_store),
 ) -> PriceHistoryResponse:
     """Query price history with optional filters."""
@@ -32,6 +33,7 @@ async def get_price_history(
         date_from=date_from,
         date_to=date_to,
         limit=limit,
+        offset=offset,
     )
     return PriceHistoryResponse(
         entries=[

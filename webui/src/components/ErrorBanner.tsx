@@ -1,20 +1,29 @@
-interface Props {
+import { useState } from "react";
+import Alert from "@mui/material/Alert";
+import Collapse from "@mui/material/Collapse";
+
+interface ErrorBannerProps {
   message: string;
   onDismiss?: () => void;
 }
 
-export default function ErrorBanner({ message, onDismiss }: Props) {
+export default function ErrorBanner({ message, onDismiss }: ErrorBannerProps) {
+  const [open, setOpen] = useState(true);
+
+  const handleClose = () => {
+    setOpen(false);
+    onDismiss?.();
+  };
+
   return (
-    <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded px-4 py-3 text-sm flex items-start gap-3">
-      <span className="flex-1 break-words">{message}</span>
-      {onDismiss && (
-        <button
-          onClick={onDismiss}
-          className="text-red-400 hover:text-red-300 font-bold shrink-0"
-        >
-          &times;
-        </button>
-      )}
-    </div>
+    <Collapse in={open}>
+      <Alert
+        severity="error"
+        onClose={onDismiss ? handleClose : undefined}
+        sx={{ mb: 2 }}
+      >
+        {message}
+      </Alert>
+    </Collapse>
   );
 }

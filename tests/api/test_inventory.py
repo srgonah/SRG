@@ -22,6 +22,29 @@ def mock_inventory_store():
     store = AsyncMock()
     store.list_items.return_value = []
     store.get_movements.return_value = []
+    store.list_low_stock.return_value = []
+    return store
+
+
+@pytest.fixture
+def mock_inventory_store_with_low_stock():
+    store = AsyncMock()
+    now = datetime.utcnow()
+    low_items = [
+        InventoryItem(
+            id=1, material_id="MAT-001",
+            quantity_on_hand=3, avg_cost=10.0,
+            created_at=now, updated_at=now,
+        ),
+        InventoryItem(
+            id=2, material_id="MAT-002",
+            quantity_on_hand=7, avg_cost=5.0,
+            created_at=now, updated_at=now,
+        ),
+    ]
+    store.list_items.return_value = []
+    store.get_movements.return_value = []
+    store.list_low_stock.return_value = low_items
     return store
 
 
@@ -91,3 +114,41 @@ class TestInventoryAPI:
     async def test_movements_endpoint_exists(self, inv_client: AsyncClient):
         response = await inv_client.get("/api/inventory/1/movements")
         assert response.status_code != 404
+
+    async def test_low_stock_endpoint_returns_200(self, inv_client: AsyncClient):
+        """Test that GET /api/inventory/low-stock returns 200."""
+        response = await inv_client.get("/api/inventory/low-stock")
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+        assert "total" in data
+
+    async def test_low_stock_with_custom_threshold(self, inv_client: AsyncClient):
+        """Test that low-stock accepts a threshold query param."""
+        response = await inv_client.get("/api/inventory/low-stock?threshold=5")
+        assert response.status_code == 200
+
+
+class TestLowStockWithData:
+    """Test low-stock endpoint with actual data."""
+
+    @pytest.fixture
+    async def low_stock_client(self, mock_inventory_store_with_low_stock, mock_receive_use_case, mock_issue_use_case):
+        app.dependency_overrides[get_inv_item_store] = lambda: mock_inventory_store_with_low_stock
+        app.dependency_overrides[get_receive_stock_use_case] = lambda: mock_receive_use_case
+        app.dependency_overrides[get_issue_stock_use_case] = lambda: mock_issue_use_case
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+        app.dependency_overrides.pop(get_inv_item_store, None)
+        app.dependency_overrides.pop(get_receive_stock_use_case, None)
+        app.dependency_overrides.pop(get_issue_stock_use_case, None)
+
+    async def test_low_stock_returns_items(self, low_stock_client: AsyncClient):
+        """Test that low-stock returns items below the threshold."""
+        response = await low_stock_client.get("/api/inventory/low-stock?threshold=10")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+        assert data["items"][0]["material_id"] == "MAT-001"

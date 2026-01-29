@@ -142,3 +142,41 @@ class TestCatalogAPI:
         assert data["id"] == "mat-abc"
         assert data["name"] == "PVC Cable 10mm"
         assert "synonyms" in data
+
+
+class TestCatalogExport:
+    """Tests for GET /api/catalog/export."""
+
+    async def test_export_json_default(self, catalog_client: AsyncClient):
+        """Test that export defaults to JSON format."""
+        response = await catalog_client.get("/api/catalog/export")
+        assert response.status_code == 200
+        data = response.json()
+        assert "materials" in data
+        assert "total" in data
+        assert data["total"] >= 1
+        assert data["materials"][0]["name"] == "PVC Cable 10mm"
+
+    async def test_export_json_explicit(self, catalog_client: AsyncClient):
+        """Test explicit JSON export format."""
+        response = await catalog_client.get("/api/catalog/export?format=json")
+        assert response.status_code == 200
+        data = response.json()
+        assert "materials" in data
+
+    async def test_export_csv(self, catalog_client: AsyncClient):
+        """Test CSV export format returns CSV content."""
+        response = await catalog_client.get("/api/catalog/export?format=csv")
+        assert response.status_code == 200
+        assert "text/csv" in response.headers.get("content-type", "")
+        assert "catalog_export.csv" in response.headers.get("content-disposition", "")
+        # Verify CSV content has header and data
+        lines = response.text.strip().split("\n")
+        assert len(lines) >= 2  # header + at least one data row
+        assert "name" in lines[0]
+        assert "PVC Cable 10mm" in lines[1]
+
+    async def test_export_invalid_format(self, catalog_client: AsyncClient):
+        """Test that invalid format returns 422."""
+        response = await catalog_client.get("/api/catalog/export?format=xml")
+        assert response.status_code == 422

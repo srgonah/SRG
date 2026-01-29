@@ -1,18 +1,38 @@
-import { NavLink, Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { NavLink, Outlet } from "react-router-dom";
+import AppBar from "@mui/material/AppBar";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Container from "@mui/material/Container";
+import Drawer from "@mui/material/Drawer";
+import IconButton from "@mui/material/IconButton";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import Toolbar from "@mui/material/Toolbar";
+import Typography from "@mui/material/Typography";
+import MenuIcon from "@mui/icons-material/Menu";
 import { health } from "../api/client";
 
-const NAV: { to: string; label: string }[] = [
+const NAV_ITEMS: { to: string; label: string }[] = [
   { to: "/", label: "Dashboard" },
   { to: "/invoices", label: "Invoices" },
   { to: "/catalog", label: "Catalog" },
   { to: "/prices", label: "Prices" },
-  { to: "/company-documents", label: "Documents" },
+  { to: "/inventory", label: "Inventory" },
+  { to: "/sales", label: "Sales" },
+  { to: "/company-documents", label: "Company Docs" },
   { to: "/reminders", label: "Reminders" },
+  { to: "/documents", label: "Documents" },
+  { to: "/search", label: "Search" },
+  { to: "/chat", label: "Chat" },
+  { to: "/amazon-import", label: "Amazon Import" },
 ];
 
 export default function Layout() {
   const [status, setStatus] = useState<"ok" | "err" | "loading">("loading");
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     health
@@ -21,61 +41,173 @@ export default function Layout() {
       .catch(() => setStatus("err"));
   }, []);
 
-  const dot =
+  const statusColor =
     status === "ok"
-      ? "bg-green-500"
+      ? "success.main"
       : status === "err"
-        ? "bg-red-500"
-        : "bg-slate-500 animate-pulse";
+        ? "error.main"
+        : "grey.500";
+
+  const handleDrawerToggle = () => {
+    setDrawerOpen((prev) => !prev);
+  };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <NavLink to="/" className="text-lg font-semibold">
-            <span className="text-blue-500">SRG</span>{" "}
-            <span className="hidden sm:inline text-slate-300">Invoice Processing</span>
-          </NavLink>
-          <nav className="flex gap-1">
-            {NAV.map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end={n.to === "/"}
-                className={({ isActive }) =>
-                  `px-3 py-1.5 rounded text-sm transition-colors ${
-                    isActive
-                      ? "bg-slate-800 text-white"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-                  }`
-                }
-              >
-                {n.label}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <div className={`w-2 h-2 rounded-full ${dot}`} />
-          {status === "ok" ? "Healthy" : status === "err" ? "Unhealthy" : "..."}
-          <a
-            href="/docs"
-            target="_blank"
-            rel="noreferrer"
-            className="ml-3 text-slate-500 hover:text-blue-400 transition-colors"
+    <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <AppBar position="static" color="default" elevation={1}>
+        <Toolbar variant="dense" sx={{ gap: 1 }}>
+          {/* Mobile hamburger */}
+          <IconButton
+            edge="start"
+            color="inherit"
+            aria-label="open navigation menu"
+            onClick={handleDrawerToggle}
+            sx={{ display: { md: "none" } }}
           >
-            API Docs
-          </a>
-        </div>
-      </header>
+            <MenuIcon />
+          </IconButton>
 
-      <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
+          {/* App title */}
+          <Typography
+            variant="h6"
+            component={NavLink}
+            to="/"
+            sx={{
+              textDecoration: "none",
+              color: "primary.main",
+              fontWeight: 700,
+              mr: 2,
+            }}
+          >
+            SRG
+          </Typography>
+
+          {/* Desktop navigation */}
+          <Box
+            component="nav"
+            sx={{
+              display: { xs: "none", md: "flex" },
+              gap: 0.5,
+              flexGrow: 1,
+            }}
+          >
+            {NAV_ITEMS.map((item) => (
+              <Button
+                key={item.to}
+                component={NavLink}
+                to={item.to}
+                end={item.to === "/"}
+                size="small"
+                sx={{
+                  textTransform: "none",
+                  color: "text.secondary",
+                  "&.active": {
+                    color: "primary.main",
+                    bgcolor: "action.selected",
+                  },
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </Box>
+
+          {/* Spacer for mobile */}
+          <Box sx={{ flexGrow: 1, display: { md: "none" } }} />
+
+          {/* Health status and API docs */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                bgcolor: statusColor,
+                ...(status === "loading" && {
+                  animation: "pulse 1.5s infinite",
+                  "@keyframes pulse": {
+                    "0%, 100%": { opacity: 1 },
+                    "50%": { opacity: 0.4 },
+                  },
+                }),
+              }}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {status === "ok"
+                ? "Healthy"
+                : status === "err"
+                  ? "Unhealthy"
+                  : "..."}
+            </Typography>
+            <Button
+              href="/docs"
+              target="_blank"
+              rel="noreferrer"
+              size="small"
+              sx={{ textTransform: "none", ml: 1 }}
+            >
+              API Docs
+            </Button>
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      {/* Mobile drawer */}
+      <Drawer
+        anchor="left"
+        open={drawerOpen}
+        onClose={handleDrawerToggle}
+        sx={{ display: { md: "none" } }}
+      >
+        <Box sx={{ width: 250 }} role="presentation">
+          <Typography
+            variant="h6"
+            sx={{ px: 2, py: 1.5, fontWeight: 700, color: "primary.main" }}
+          >
+            SRG
+          </Typography>
+          <List>
+            {NAV_ITEMS.map((item) => (
+              <ListItem key={item.to} disablePadding>
+                <ListItemButton
+                  component={NavLink}
+                  to={item.to}
+                  end={item.to === "/"}
+                  onClick={handleDrawerToggle}
+                  sx={{
+                    "&.active": {
+                      bgcolor: "action.selected",
+                      color: "primary.main",
+                    },
+                  }}
+                >
+                  <ListItemText primary={item.label} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+      </Drawer>
+
+      {/* Main content */}
+      <Container maxWidth="xl" component="main" sx={{ flexGrow: 1, py: 3 }}>
         <Outlet />
-      </main>
+      </Container>
 
-      <footer className="text-center py-4 text-xs text-slate-600 border-t border-slate-800">
-        SRG v1.0.0
-      </footer>
-    </div>
+      {/* Footer */}
+      <Box
+        component="footer"
+        sx={{
+          textAlign: "center",
+          py: 2,
+          borderTop: 1,
+          borderColor: "divider",
+        }}
+      >
+        <Typography variant="caption" color="text.secondary">
+          SRG v1.0.0
+        </Typography>
+      </Box>
+    </Box>
   );
 }

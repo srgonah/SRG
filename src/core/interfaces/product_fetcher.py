@@ -37,6 +37,17 @@ class ProductPageData(BaseModel):
         default_factory=dict,
         description="Additional key-value attributes extracted from the page",
     )
+    # Extended product fields
+    asin: str | None = Field(default=None, description="Amazon Standard Identification Number")
+    weight: str | None = Field(default=None, description="Product weight from detail table")
+    dimensions: str | None = Field(
+        default=None, description="Product dimensions from detail table"
+    )
+    price: str | None = Field(default=None, description="Product price as displayed")
+    rating: float | None = Field(default=None, description="Average customer rating (0-5)")
+    num_ratings: int | None = Field(
+        default=None, description="Number of customer ratings/reviews"
+    )
 
 
 class IProductPageFetcher(ABC):
